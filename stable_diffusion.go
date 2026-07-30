@@ -68,6 +68,8 @@ var SampleMethodMap = map[string]sd.SampleMethod{
 	"euler_cfg_pp":        sd.EulerCFGPPSampleMethod,
 	"euler_a_cfg_pp":      sd.EulerACFGPPSampleMethod,
 	"euler_ge":            sd.EulerGESampleMethod,
+	"dpm++2m_sde":         sd.DPMPP2MSDESampleMethod,
+	"dpm++2m_sde_bt":      sd.DPMPP2MSDEBTSampleMethod,
 	"sample_method_count": sd.SampleMethodCount,
 }
 
@@ -86,18 +88,27 @@ var SchedulerMap = map[string]sd.Scheduler{
 	"lcm":             sd.LCMScheduler,
 	"bong_tangent":    sd.BongTangentScheduler,
 	"ltx2":            sd.LTX2Scheduler,
+	"logit_normal":    sd.LogitNormalScheduler,
+	"flux2":           sd.Flux2Scheduler,
+	"flux":            sd.FluxScheduler,
+	"beta":            sd.BetaScheduler,
 	"scheduler_count": sd.SchedulerCount,
 }
 
-// PredictionMap prediction type mapping
+// PredictionMap prediction type mapping. Upstream master-802 replaced
+// FLUX2_FLOW_PRED with SEFI_FLOW_PRED (same enum slot) and added
+// MINIT2I_FLOW_PRED; its canonical name for FLOW_PRED is "sd3_flow" ("flow" is
+// kept as this binding's legacy alias).
 var PredictionMap = map[string]sd.Prediction{
-	"eps":        sd.EPSPred,
-	"v":          sd.VPred,
-	"edm_v":      sd.EDMVPred,
-	"flow":       sd.FlowPred,
-	"flux_flow":  sd.FluxFlowPred,
-	"flux2_flow": sd.Flux2FlowPred,
-	"default":    sd.PredictionCount, // Default
+	"eps":          sd.EPSPred,
+	"v":            sd.VPred,
+	"edm_v":        sd.EDMVPred,
+	"flow":         sd.FlowPred,
+	"sd3_flow":     sd.FlowPred,
+	"flux_flow":    sd.FluxFlowPred,
+	"sefi_flow":    sd.SefiFlowPred,
+	"minit2i_flow": sd.Minit2iFlowPred,
+	"default":      sd.PredictionCount, // Default
 }
 
 // SDTypeMap SDType mapping
@@ -169,6 +180,7 @@ var VAEFormatMap = map[string]sd.SDVAEFormat{
 	"flux":  sd.FluxVAEFormat,
 	"sd3":   sd.SD3VAEFormat,
 	"flux2": sd.Flux2VAEFormat,
+	"wan":   sd.WanVAEFormat,
 }
 
 // HiresUpscalerMap hi-res-fix upscaler mapping
@@ -202,40 +214,73 @@ type ContextParams struct {
 	AudioVAEPath                string     // Audio VAE model path (for audio-capable video models)
 	TAESDPath                   string     // TAE-SD model path, uses Tiny AutoEncoder for fast decoding (low quality)
 	ControlNetPath              string     // ControlNet model path
+	IPAdapterPath               string     // IP-Adapter model path
+	MotionModulePath            string     // Motion module model path (AnimateDiff)
 	Embeddings                  *Embedding // Embedding information
 	EmbeddingCount              uint32     // Number of embeddings
 	PhotoMakerPath              string     // PhotoMaker model path
+	PulidWeightsPath            string     // PuLID weights path
 	TensorTypeRules             string     // Weight type rules per tensor pattern (e.g., "^vae\.=f16,model\.=q8_0")
-	VAEDecodeOnly               bool       // Process VAE using only decode mode
-	FreeParamsImmediately       bool       // Whether to free parameters immediately
 	NThreads                    int32      // Number of threads to use for generation
 	WType                       string     // Weight type (default: auto-detect from model file)
 	RNGType                     string     // Random number generator type (default: "cuda")
 	SamplerRNGType              string     // Sampler random number generator type (default: "cuda")
 	Prediction                  string     // Prediction type override
 	LoraApplyMode               string     // LoRA application mode (default: "auto")
-	OffloadParamsToCPU          bool       // Keep weights in RAM to save VRAM, auto-load to VRAM when needed
+	OffloadParamsToCPU          bool       // Keep weights in RAM to save VRAM, auto-load to VRAM when needed (translated to the params-backend assignment "*=cpu", as upstream's --offload-to-cpu now is)
 	EnableMmap                  bool       // Whether to enable memory mapping
-	KeepClipOnCPU               bool       // Keep CLIP on CPU (for low VRAM)
-	KeepControlNetOnCPU         bool       // Keep ControlNet on CPU (for low VRAM)
-	KeepVAEOnCPU                bool       // Keep VAE on CPU (for low VRAM)
+	KeepClipOnCPU               bool       // Keep CLIP on CPU (for low VRAM; translated to the backend assignment "te=cpu")
+	KeepControlNetOnCPU         bool       // Keep ControlNet on CPU (for low VRAM; translated to the backend assignment "controlnet=cpu")
+	KeepVAEOnCPU                bool       // Keep VAE on CPU (for low VRAM; translated to the backend assignment "vae=cpu")
 	FlashAttn                   bool       // Use Flash attention across the whole model (significantly reduces memory usage)
 	DiffusionFlashAttn          bool       // Use Flash attention in diffusion model (significantly reduces memory usage)
 	TAEPreviewOnly              bool       // Prevent decoding final image with taesd (for preview="tae")
 	DiffusionConvDirect         bool       // Use Conv2d direct in diffusion model
 	VAEConvDirect               bool       // Use Conv2d direct in VAE model (should improve performance)
-	CircularX                   bool       // Enable circular padding on X axis
-	CircularY                   bool       // Enable circular padding on Y axis
 	ForceSDXLVAConvScale        bool       // Force conv scale on SDXL VAE
-	ChromaUseDitMask            bool       // Whether Chroma uses DiT mask
-	ChromaUseT5Mask             bool       // Whether Chroma uses T5 mask
-	ChromaT5MaskPad             int32      // Chroma T5 mask padding size
-	QwenImageZeroCondT          bool       // Qwen-image zero condition T parameter
-	VAEFormat                   string     // VAE weight format override: "auto" (default), "flux", "sd3", "flux2"
-	MaxVRAM                     float32    // GiB budget for graph-cut segmented param offload (0 = disabled, -1 = auto: free VRAM minus 1 GiB)
+	VAEFormat                   string     // VAE weight format override: "auto" (default), "flux", "sd3", "flux2", "wan"
+	MaxVRAM                     string     // GiB budget or backend assignment spec for graph-cut segmented param offload ("" = disabled, "-1" = auto)
 	StreamLayers                bool       // Stream model weights from CPU during generation (residency+prefetch on top of MaxVRAM; no effect unless MaxVRAM is set)
-	Backend                     string     // Compute backend override (empty = library default)
-	ParamsBackend               string     // Params/storage backend override (empty = library default)
+	EagerLoad                   bool       // Load all params into the params backend at model-load time instead of lazily on first use
+	Backend                     string     // Compute backend override or assignment spec (empty = library default)
+	ParamsBackend               string     // Params/storage backend override or assignment spec (empty = library default)
+	SplitMode                   string     // Weight distribution for multi-device modules: "layer" (default), "row", or per-module assignments e.g. "diffusion=row"
+	AutoFit                     bool       // Automatically fit the model across available devices
+	RPCServers                  string     // Comma-separated list of RPC servers (host:port) for offloading
+	ModelArgs                   string     // Extra model args, key=value list (supports chroma_use_dit_mask, chroma_use_t5_mask, chroma_t5_mask_pad, qwen_image_zero_cond_t)
+}
+
+// prependBackendAssignment prepends a device assignment (e.g. "te=cpu") to a
+// backend assignment spec, mirroring upstream's CLI helper of the same name.
+func prependBackendAssignment(spec string, assignment string) string {
+	if spec == "" {
+		return assignment
+	}
+	return assignment + "," + spec
+}
+
+// buildRefImageArgs translates the AutoResizeRefImage / IncreaseRefIndex
+// booleans of the previous upstream pin into the free-form ref_image_args
+// key=value list of the master-802 resync, exactly the way upstream's CLI
+// does, and appends any caller-supplied extra args verbatim.
+func buildRefImageArgs(autoResizeRefImage bool, increaseRefIndex bool, extra string) string {
+	args := ""
+	appendArg := func(arg string) {
+		if args != "" {
+			args += ","
+		}
+		args += arg
+	}
+	if !autoResizeRefImage {
+		appendArg("resize_before_vae=0")
+	}
+	if increaseRefIndex {
+		appendArg("ref_index_mode=increase")
+	}
+	if extra != "" {
+		appendArg(extra)
+	}
+	return args
 }
 
 // Lora LoRA structure for defining LoRA model parameters
@@ -263,8 +308,9 @@ type ImgGenParams struct {
 	InitImagePath      string            // Initial image path for guidance
 	RefImagesPath      []string          // Array of reference image paths for Flux Kontext models
 	RefImagesCount     int32             // Number of reference images
-	AutoResizeRefImage bool              // Whether to auto-resize reference images
-	IncreaseRefIndex   bool              // Whether to auto-increase index based on reference image list order (starting from 1)
+	AutoResizeRefImage bool              // Whether to auto-resize reference images (translated to the ref-image arg "resize_before_vae=0" when false, as upstream's CLI does)
+	IncreaseRefIndex   bool              // Whether to auto-increase index based on reference image list order (translated to the ref-image arg "ref_index_mode=increase", as upstream's CLI does)
+	RefImageArgs       string            // Extra ref-image args, key=value list (advanced; appended after the translated flags above)
 	MaskImagePath      string            // Inpainting mask image path
 	Width              int32             // Image width (pixels)
 	Height             int32             // Image height (pixels)
@@ -291,6 +337,8 @@ type ImgGenParams struct {
 	CacheParams        sd.SDCacheParams  // Cache parameters for DiT models
 	FlowShift          float32           // Shift value for flow models (e.g. SD3.x, Flux); 0 = library default
 	ExtraSampleArgs    string            // Extra model-specific sampler arguments (advanced)
+	CircularX          bool              // Enable circular padding on X axis (moved here from ContextParams by the master-802 upstream resync)
+	CircularY          bool              // Enable circular padding on Y axis (moved here from ContextParams by the master-802 upstream resync)
 
 	// Hi-res fix: optionally run a second high-resolution refinement pass.
 	HiresEnabled           bool      // Enable hi-res fix
@@ -355,6 +403,8 @@ type VidGenParams struct {
 	VideoFrames  int32            // Number of video frames to generate
 	VaceStrength float32          // Wan VACE strength
 	CacheParams  sd.SDCacheParams // Cache parameters for DiT models
+	CircularX    bool             // Enable circular padding on X axis (moved here from ContextParams by the master-802 upstream resync)
+	CircularY    bool             // Enable circular padding on Y axis (moved here from ContextParams by the master-802 upstream resync)
 }
 
 // StableDiffusion Stable Diffusion structure containing context pointer
@@ -436,6 +486,14 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 		sdCtxParams.ControlNetPath = sd.CString(ctxParams.ControlNetPath)
 	}
 
+	if ctxParams.IPAdapterPath != "" {
+		sdCtxParams.IPAdapterPath = sd.CString(ctxParams.IPAdapterPath)
+	}
+
+	if ctxParams.MotionModulePath != "" {
+		sdCtxParams.MotionModulePath = sd.CString(ctxParams.MotionModulePath)
+	}
+
 	if ctxParams.Embeddings != nil {
 		sdCtxParams.Embeddings = &sd.SDEmbedding{
 			Name: sd.CString(ctxParams.Embeddings.Name),
@@ -451,12 +509,13 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 		sdCtxParams.PhotoMakerPath = sd.CString(ctxParams.PhotoMakerPath)
 	}
 
+	if ctxParams.PulidWeightsPath != "" {
+		sdCtxParams.PulidWeightsPath = sd.CString(ctxParams.PulidWeightsPath)
+	}
+
 	if ctxParams.TensorTypeRules != "" {
 		sdCtxParams.TensorTypeRules = sd.CString(ctxParams.TensorTypeRules)
 	}
-
-	sdCtxParams.VAEDecodeOnly = ctxParams.VAEDecodeOnly
-	sdCtxParams.FreeParamsImmediately = ctxParams.FreeParamsImmediately
 
 	if ctxParams.NThreads > 0 {
 		sdCtxParams.NThreads = ctxParams.NThreads
@@ -502,27 +561,13 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 		}
 	}
 
-	sdCtxParams.OffloadParamsToCPU = ctxParams.OffloadParamsToCPU
 	sdCtxParams.EnableMmap = ctxParams.EnableMmap
-	sdCtxParams.KeepClipOnCPU = ctxParams.KeepClipOnCPU
-	sdCtxParams.KeepControlNetOnCPU = ctxParams.KeepControlNetOnCPU
-	sdCtxParams.KeepVAEOnCPU = ctxParams.KeepVAEOnCPU
 	sdCtxParams.FlashAttn = ctxParams.FlashAttn
 	sdCtxParams.DiffusionFlashAttn = ctxParams.DiffusionFlashAttn
 	sdCtxParams.TAEPreviewOnly = ctxParams.TAEPreviewOnly
 	sdCtxParams.DiffusionConvDirect = ctxParams.DiffusionConvDirect
 	sdCtxParams.VAEConvDirect = ctxParams.VAEConvDirect
-	sdCtxParams.CircularX = ctxParams.CircularX
-	sdCtxParams.CircularY = ctxParams.CircularY
 	sdCtxParams.ForceSDXLVAConvScale = ctxParams.ForceSDXLVAConvScale
-	sdCtxParams.ChromaUseDitMask = ctxParams.ChromaUseDitMask
-	sdCtxParams.ChromaUseT5Mask = ctxParams.ChromaUseT5Mask
-
-	if ctxParams.ChromaT5MaskPad != 0 {
-		sdCtxParams.ChromaT5MaskPad = ctxParams.ChromaT5MaskPad
-	}
-
-	sdCtxParams.QwenImageZeroCondT = ctxParams.QwenImageZeroCondT
 
 	if ctxParams.VAEFormat != "" {
 		if vaeFormat, ok := VAEFormatMap[ctxParams.VAEFormat]; ok {
@@ -532,14 +577,48 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 		}
 	}
 
-	sdCtxParams.MaxVRAM = ctxParams.MaxVRAM
-	sdCtxParams.StreamLayers = ctxParams.StreamLayers
-
-	if ctxParams.Backend != "" {
-		sdCtxParams.Backend = sd.CString(ctxParams.Backend)
+	if ctxParams.MaxVRAM != "" {
+		sdCtxParams.MaxVRAM = sd.CString(ctxParams.MaxVRAM)
 	}
-	if ctxParams.ParamsBackend != "" {
-		sdCtxParams.ParamsBackend = sd.CString(ctxParams.ParamsBackend)
+	sdCtxParams.StreamLayers = ctxParams.StreamLayers
+	sdCtxParams.EagerLoad = ctxParams.EagerLoad
+
+	// The CPU-placement booleans of the previous upstream pin
+	// (offload_params_to_cpu / keep_clip_on_cpu / keep_vae_on_cpu /
+	// keep_control_net_on_cpu) are now expressed as backend assignment specs.
+	// Translate them exactly the way upstream's own CLI does, prepending so an
+	// explicit user-supplied spec keeps precedence order identical to the CLI.
+	backend := ctxParams.Backend
+	paramsBackend := ctxParams.ParamsBackend
+	if ctxParams.OffloadParamsToCPU {
+		paramsBackend = prependBackendAssignment(paramsBackend, "*=cpu")
+	}
+	if ctxParams.KeepClipOnCPU {
+		backend = prependBackendAssignment(backend, "te=cpu")
+	}
+	if ctxParams.KeepVAEOnCPU {
+		backend = prependBackendAssignment(backend, "vae=cpu")
+	}
+	if ctxParams.KeepControlNetOnCPU {
+		backend = prependBackendAssignment(backend, "controlnet=cpu")
+	}
+
+	if backend != "" {
+		sdCtxParams.Backend = sd.CString(backend)
+	}
+	if paramsBackend != "" {
+		sdCtxParams.ParamsBackend = sd.CString(paramsBackend)
+	}
+
+	if ctxParams.SplitMode != "" {
+		sdCtxParams.SplitMode = sd.CString(ctxParams.SplitMode)
+	}
+	sdCtxParams.AutoFit = ctxParams.AutoFit
+	if ctxParams.RPCServers != "" {
+		sdCtxParams.RPCServers = sd.CString(ctxParams.RPCServers)
+	}
+	if ctxParams.ModelArgs != "" {
+		sdCtxParams.ModelArgs = sd.CString(ctxParams.ModelArgs)
 	}
 
 	// 2. Create new context
@@ -604,8 +683,9 @@ func (sDiffusion *StableDiffusion) GenerateImage(imgGenParams *ImgGenParams, new
 	if imgGenParams.RefImagesCount > 0 {
 		sdImgGenParams.RefImagesCount = imgGenParams.RefImagesCount
 	}
-	sdImgGenParams.AutoResizeRefImage = imgGenParams.AutoResizeRefImage
-	sdImgGenParams.IncreaseRefIndex = imgGenParams.IncreaseRefIndex
+	sdImgGenParams.RefImageArgs = sd.CString(buildRefImageArgs(imgGenParams.AutoResizeRefImage, imgGenParams.IncreaseRefIndex, imgGenParams.RefImageArgs))
+	sdImgGenParams.CircularX = imgGenParams.CircularX
+	sdImgGenParams.CircularY = imgGenParams.CircularY
 	sdImgGenParams.MaskImage = sd.GenerateImageFromPath(imgGenParams.MaskImagePath)
 
 	// For img2img, ensure generated image dimensions match initial image dimensions
@@ -815,13 +895,13 @@ func (sDiffusion *StableDiffusion) GenerateImage(imgGenParams *ImgGenParams, new
 	// Generate image. The context is intentionally NOT freed here: the model is
 	// loaded once in NewStableDiffusion and reused across many GenerateImage
 	// calls. Teardown is the caller's responsibility via (*StableDiffusion).Free.
-	img := sDiffusion.ctx.GenerateImage(&sdImgGenParams)
-	if img == nil {
+	img, numImages := sDiffusion.ctx.GenerateImage(&sdImgGenParams)
+	if img == nil || numImages == 0 {
 		return errors.New("failed to generate image")
 	}
-	// generate_image returns a malloc'd array of BatchCount images, each with a
+	// generate_image yields a malloc'd array of numImages images, each with a
 	// malloc'd pixel buffer; free it once we're done with it to avoid a leak.
-	defer sd.FreeImages(img, int(sdImgGenParams.BatchCount))
+	defer sd.FreeImages(img, numImages)
 
 	fmt.Println("\nImage generated successfully!")
 	fmt.Printf("Image dimensions: %dx%d\n", img.Width, img.Height)
@@ -1099,6 +1179,9 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 	}
 	sdVidGenParams.VaceStrength = vidGenParams.VaceStrength
 
+	sdVidGenParams.CircularX = vidGenParams.CircularX
+	sdVidGenParams.CircularY = vidGenParams.CircularY
+
 	// Initialize cache parameters
 	var cacheParams sd.SDCacheParams
 	sd.CacheParamsInit(&cacheParams)
@@ -1142,12 +1225,12 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 
 type UpscalerParams struct {
 	EsrganPath         string // ESRGAN model path
-	OffloadParamsToCPU bool   // Whether to save parameters to CPU
+	OffloadParamsToCPU bool   // Whether to save parameters to CPU (translated to the params-backend assignment "*=cpu"; upstream removed the dedicated flag)
 	Direct             bool   // Whether to use direct mode
 	NThreads           int    // Number of threads to use
 	TileSize           int    // Tile size
 	Backend            string // Compute backend override (empty = library default)
-	ParamsBackend      string // Params/storage backend override (empty = library default)
+	ParamsBackend      string // Params/storage backend override or assignment spec (empty = library default)
 }
 
 type Upscaler struct {
@@ -1164,14 +1247,20 @@ func NewUpscaler(params *UpscalerParams) *Upscaler {
 		params.TileSize = 128
 	}
 
+	// Upstream's new_upscaler_ctx no longer takes offload_params_to_cpu;
+	// express it as a params-backend assignment spec instead.
+	paramsBackend := params.ParamsBackend
+	if params.OffloadParamsToCPU {
+		paramsBackend = prependBackendAssignment(paramsBackend, "*=cpu")
+	}
+
 	ctx := sd.NewUpscalerContext(
 		params.EsrganPath,
-		params.OffloadParamsToCPU,
 		params.Direct,
 		params.NThreads,
 		params.TileSize,
 		params.Backend,
-		params.ParamsBackend,
+		paramsBackend,
 	)
 	return &Upscaler{ctx: ctx}
 }
@@ -1181,13 +1270,18 @@ func (us *Upscaler) Upscale(inputImagePath string, upscaleFactor uint32, outputI
 	// Directly use LoadImage function to avoid dangling pointer issues
 	inputSDImage := sd.GenerateImageFromPath(inputImagePath)
 	fmt.Printf("inputSDImage: %+v", inputSDImage)
-	outputSDImage := us.ctx.Upscale(inputSDImage, upscaleFactor)
-	fmt.Printf("outputSDImage: %+v", outputSDImage)
 
 	defer us.ctx.Free()
 
+	outputImages, numImages := us.ctx.Upscale(inputSDImage, upscaleFactor)
+	if outputImages == nil || numImages == 0 {
+		return errors.New("failed to upscale image")
+	}
+	defer sd.FreeImages(outputImages, numImages)
+	fmt.Printf("outputSDImage: %+v", *outputImages)
+
 	// Save image
-	err := sd.SaveImage(&outputSDImage, outputImagePath)
+	err := sd.SaveImage(outputImages, outputImagePath)
 	if err != nil {
 		return fmt.Errorf("failed to save image: %v", err)
 	}

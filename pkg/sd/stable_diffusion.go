@@ -37,6 +37,8 @@ const (
 	EulerCFGPPSampleMethod
 	EulerACFGPPSampleMethod
 	EulerGESampleMethod
+	DPMPP2MSDESampleMethod
+	DPMPP2MSDEBTSampleMethod
 	SampleMethodCount
 )
 
@@ -55,6 +57,10 @@ const (
 	LCMScheduler
 	BongTangentScheduler
 	LTX2Scheduler
+	LogitNormalScheduler
+	Flux2Scheduler
+	FluxScheduler
+	BetaScheduler
 	SchedulerCount
 )
 
@@ -66,7 +72,11 @@ const (
 	EDMVPred
 	FlowPred
 	FluxFlowPred
-	Flux2FlowPred
+	// SefiFlowPred occupies the enum slot that FLUX2_FLOW_PRED held before the
+	// master-802 resync: upstream replaced FLUX2_FLOW_PRED with SEFI_FLOW_PRED
+	// (same integer value, 5) and appended MINIT2I_FLOW_PRED.
+	SefiFlowPred
+	Minit2iFlowPred
 	PredictionCount
 )
 
@@ -165,7 +175,23 @@ const (
 	FluxVAEFormat  SDVAEFormat = 0
 	SD3VAEFormat   SDVAEFormat = 1
 	Flux2VAEFormat SDVAEFormat = 2
-	VAEFormatCount SDVAEFormat = 3
+	WanVAEFormat   SDVAEFormat = 3
+	VAEFormatCount SDVAEFormat = 4
+)
+
+// SDCancelMode mirrors enum sd_cancel_mode_t (added upstream in the master-802
+// resync) and selects how sd_cancel_generation interrupts an in-flight
+// generation.
+type SDCancelMode int32
+
+const (
+	// CancelAll stops the current generation as soon as possible.
+	CancelAll SDCancelMode = iota
+	// CancelNewLatents finishes the current image sample, then skips
+	// additional batch latents and returns the completed images.
+	CancelNewLatents
+	// CancelReset clears a pending cancellation request.
+	CancelReset
 )
 
 type SDHiresUpscaler int32
@@ -201,6 +227,20 @@ type SDEmbedding struct {
 	Path *uint8
 }
 
+// SDContextParams mirrors sd_ctx_params_t at upstream master-802-e92e86f.
+// Field order, types and implicit padding MUST match the C struct exactly —
+// this layout is what crosses the FFI boundary. Notable drift from the
+// previous pin (master-685-19bdfe2):
+//   - added: IPAdapterPath, MotionModulePath (after ControlNetPath),
+//     PulidWeightsPath (after PhotoMakerPath), EagerLoad, SplitMode, AutoFit,
+//     RPCServers, ModelArgs
+//   - removed: VAEDecodeOnly, FreeParamsImmediately, OffloadParamsToCPU,
+//     KeepClipOnCPU, KeepControlNetOnCPU, KeepVAEOnCPU, CircularX, CircularY
+//     (the latter two moved into the img/vid gen params), ChromaUseDitMask,
+//     ChromaUseT5Mask, ChromaT5MaskPad, QwenImageZeroCondT (chroma/qwen knobs
+//     moved into the free-form ModelArgs key=value list)
+//   - changed: MaxVRAM is now a C string (GiB budget or backend assignment
+//     spec), no longer a float
 type SDContextParams struct {
 	ModelPath                   *uint8
 	ClipLPath                   *uint8
@@ -217,40 +257,36 @@ type SDContextParams struct {
 	AudioVAEPath                *uint8
 	TAESDPath                   *uint8
 	ControlNetPath              *uint8
+	IPAdapterPath               *uint8
+	MotionModulePath            *uint8
 	Embeddings                  *SDEmbedding
 	EmbeddingCount              uint32
 	PhotoMakerPath              *uint8
+	PulidWeightsPath            *uint8
 	TensorTypeRules             *uint8
-	VAEDecodeOnly               bool
-	FreeParamsImmediately       bool
 	NThreads                    int32
 	WType                       SDType
 	RNGType                     RngType
 	SamplerRNGType              RngType
 	Prediction                  Prediction
 	LoraApplyMode               LoraApplyMode
-	OffloadParamsToCPU          bool
 	EnableMmap                  bool
-	KeepClipOnCPU               bool
-	KeepControlNetOnCPU         bool
-	KeepVAEOnCPU                bool
 	FlashAttn                   bool
 	DiffusionFlashAttn          bool
 	TAEPreviewOnly              bool
 	DiffusionConvDirect         bool
 	VAEConvDirect               bool
-	CircularX                   bool
-	CircularY                   bool
 	ForceSDXLVAConvScale        bool
-	ChromaUseDitMask            bool
-	ChromaUseT5Mask             bool
-	ChromaT5MaskPad             int32
-	QwenImageZeroCondT          bool
 	VAEFormat                   SDVAEFormat
-	MaxVRAM                     float32
+	MaxVRAM                     *uint8
 	StreamLayers                bool
+	EagerLoad                   bool
 	Backend                     *uint8
 	ParamsBackend               *uint8
+	SplitMode                   *uint8
+	AutoFit                     bool
+	RPCServers                  *uint8
+	ModelArgs                   *uint8
 }
 
 type SDImage struct {
@@ -293,6 +329,13 @@ type SDPMParams struct {
 	IDImagesCount int32
 	IDEmbedPath   *uint8
 	StyleStrength float32
+}
+
+// SDPulidParams mirrors sd_pulid_params_t (added upstream in the master-802
+// resync).
+type SDPulidParams struct {
+	IDEmbeddingPath *uint8
+	IDWeight        float32
 }
 
 type SDCacheParams struct {
@@ -351,30 +394,40 @@ type SDAudio struct {
 	Data        *float32
 }
 
+// SDImgGenParams mirrors sd_img_gen_params_t at upstream master-802-e92e86f.
+// Drift from the previous pin: AutoResizeRefImage/IncreaseRefIndex were
+// replaced by the free-form RefImageArgs C string; IPAdapterImage,
+// IPAdapterStrength, PulidParams, QwenImageLayers, CircularX and CircularY
+// were added.
 type SDImgGenParams struct {
-	Loras              *SDLora
-	LoraCount          uint32
-	Prompt             *uint8
-	NegativePrompt     *uint8
-	ClipSkip           int32
-	InitImage          SDImage
-	RefImages          *SDImage
-	RefImagesCount     int32
-	AutoResizeRefImage bool
-	IncreaseRefIndex   bool
-	MaskImage          SDImage
-	Width              int32
-	Height             int32
-	SampleParams       SDSampleParams
-	Strength           float32
-	Seed               int64
-	BatchCount         int32
-	ControlImage       SDImage
-	ControlStrength    float32
-	PMParams           SDPMParams
-	VAETilingParams    SDTilingParams
-	Cache              SDCacheParams
-	Hires              SDHiresParams
+	Loras             *SDLora
+	LoraCount         uint32
+	Prompt            *uint8
+	NegativePrompt    *uint8
+	ClipSkip          int32
+	InitImage         SDImage
+	RefImages         *SDImage
+	RefImagesCount    int32
+	RefImageArgs      *uint8
+	MaskImage         SDImage
+	Width             int32
+	Height            int32
+	SampleParams      SDSampleParams
+	Strength          float32
+	Seed              int64
+	BatchCount        int32
+	ControlImage      SDImage
+	ControlStrength   float32
+	IPAdapterImage    SDImage
+	IPAdapterStrength float32
+	PMParams          SDPMParams
+	PulidParams       SDPulidParams
+	VAETilingParams   SDTilingParams
+	Cache             SDCacheParams
+	Hires             SDHiresParams
+	QwenImageLayers   int32
+	CircularX         bool
+	CircularY         bool
 }
 
 type SDVidGenParams struct {
@@ -400,6 +453,8 @@ type SDVidGenParams struct {
 	VAETilingParams       SDTilingParams
 	Cache                 SDCacheParams
 	Hires                 SDHiresParams
+	CircularX             bool
+	CircularY             bool
 }
 
 // Define context types
@@ -469,12 +524,13 @@ var (
 	sdGetDefaultScheduler    func(ctx unsafe.Pointer, sampleMethod SampleMethod) Scheduler
 	sdImgGenParamsInit       func(params *SDImgGenParams)
 	sdImgGenParamsToStr      func(params *SDImgGenParams) *uint8
-	generateImage            func(ctx unsafe.Pointer, params *SDImgGenParams) *SDImage
+	generateImage            func(ctx unsafe.Pointer, params *SDImgGenParams, imagesOut **SDImage, numImagesOut *int32) bool
+	sdCancelGeneration       func(ctx unsafe.Pointer, mode SDCancelMode)
 	sdVidGenParamsInit       func(params *SDVidGenParams)
 	generateVideo            func(ctx unsafe.Pointer, params *SDVidGenParams, framesOut **SDImage, numFramesOut *int32, audioOut **SDAudio) bool
-	newUpscalerContext       func(esrganPath *uint8, offloadParamsToCPU bool, direct bool, nThreads int32, tileSize int32, backend *uint8, paramsBackend *uint8) unsafe.Pointer
+	newUpscalerContext       func(esrganPath *uint8, direct bool, nThreads int32, tileSize int32, backend *uint8, paramsBackend *uint8) unsafe.Pointer
 	freeUpscalerContext      func(ctx unsafe.Pointer)
-	upscale                  func(ctx unsafe.Pointer, inputImage *SDImage, upscaleFactor uint32) *SDImage
+	upscale                  func(ctx unsafe.Pointer, inputImage *SDImage, upscaleFactor uint32, imagesOut **SDImage, numImagesOut *int32) bool
 	getUpscaleFactor         func(ctx unsafe.Pointer) int32
 	convert                  func(inputPath *uint8, vaePath *uint8, outputPath *uint8, outputType SDType, tensorTypeRules *uint8, convertName bool) bool
 	preprocessCanny          func(image *SDImage, highThreshold float32, lowThreshold float32, weak float32, strong float32, inverse bool) bool
@@ -487,6 +543,7 @@ var (
 	strToSDHiresUpscaler         func(str *uint8) SDHiresUpscaler
 	sdHiresParamsInit            func(params *SDHiresParams)
 	freeSDAudio                  func(audio *SDAudio)
+	freeSDImages                 func(images *SDImage, numImages int32)
 )
 
 // The shared library is loaded lazily via Load (see load.go); importing this
@@ -718,9 +775,30 @@ func ImgGenParamsToStr(params *SDImgGenParams) string {
 	return CGoString(sdImgGenParamsToStr(params))
 }
 
-// GenerateImage generates image
-func (ctx *SDContext) GenerateImage(params *SDImgGenParams) *SDImage {
-	return generateImage(ctx.ptr, params)
+// GenerateImage generates images. As of the master-802 upstream resync,
+// generate_image returns a success bool and yields a malloc'd array of images
+// through out-parameters (instead of returning the array directly), so this
+// wrapper returns the native array pointer plus the number of images in it.
+// On failure it returns (nil, 0). The caller owns the returned array and must
+// release it with FreeImages(images, count) when done.
+func (ctx *SDContext) GenerateImage(params *SDImgGenParams) (*SDImage, int) {
+	var (
+		imagesPtr *SDImage
+		numImages int32
+	)
+	ok := generateImage(ctx.ptr, params, &imagesPtr, &numImages)
+	if !ok || imagesPtr == nil {
+		return nil, 0
+	}
+	return imagesPtr, int(numImages)
+}
+
+// CancelGeneration requests cancellation of the in-flight generation on this
+// context (or clears a pending request, with CancelReset). It is safe to call
+// from another goroutine while GenerateImage/GenerateVideo is running — that
+// is its purpose.
+func (ctx *SDContext) CancelGeneration(mode SDCancelMode) {
+	sdCancelGeneration(ctx.ptr, mode)
 }
 
 // VidGenParamsInit initializes video generation parameters
@@ -758,7 +836,10 @@ func (ctx *SDContext) GenerateVideo(params *SDVidGenParams) ([]SDImage, int) {
 
 // NewUpscalerContext creates a new upscaler context. backend and paramsBackend
 // select the runtime backend; empty strings fall back to the library default.
-func NewUpscalerContext(esrganPath string, offloadParamsToCPU bool, direct bool, nThreads int, tileSize int, backend string, paramsBackend string) *UpscalerContext {
+// (Upstream removed the offload_params_to_cpu argument in the master-802
+// resync; CPU offload is now expressed as a params-backend assignment spec,
+// e.g. paramsBackend = "*=cpu".)
+func NewUpscalerContext(esrganPath string, direct bool, nThreads int, tileSize int, backend string, paramsBackend string) *UpscalerContext {
 	cPath := CString(esrganPath)
 	cBackend := CString(backend)
 	cParamsBackend := CString(paramsBackend)
@@ -766,7 +847,7 @@ func NewUpscalerContext(esrganPath string, offloadParamsToCPU bool, direct bool,
 	defer FreeCString(cBackend)
 	defer FreeCString(cParamsBackend)
 
-	ptr := newUpscalerContext(cPath, offloadParamsToCPU, direct, int32(nThreads), int32(tileSize), cBackend, cParamsBackend)
+	ptr := newUpscalerContext(cPath, direct, int32(nThreads), int32(tileSize), cBackend, cParamsBackend)
 	return &UpscalerContext{ptr: ptr}
 }
 
@@ -778,9 +859,21 @@ func (ctx *UpscalerContext) Free() {
 	}
 }
 
-// Upscale upscales image
-func (ctx *UpscalerContext) Upscale(inputImage SDImage, upscaleFactor uint32) SDImage {
-	return *upscale(ctx.ptr, &inputImage, upscaleFactor)
+// Upscale upscales an image. As of the master-802 upstream resync, upscale
+// returns a success bool and yields a malloc'd image array through
+// out-parameters, so this wrapper returns the native array pointer plus the
+// number of images in it ((nil, 0) on failure). The caller owns the returned
+// array and must release it with FreeImages(images, count) when done.
+func (ctx *UpscalerContext) Upscale(inputImage SDImage, upscaleFactor uint32) (*SDImage, int) {
+	var (
+		imagesPtr *SDImage
+		numImages int32
+	)
+	ok := upscale(ctx.ptr, &inputImage, upscaleFactor, &imagesPtr, &numImages)
+	if !ok || imagesPtr == nil {
+		return nil, 0
+	}
+	return imagesPtr, int(numImages)
 }
 
 // GetUpscaleFactor gets upscale factor

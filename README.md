@@ -26,7 +26,7 @@ go get github.com/Pendra-Cloud/stable-diffusion-go
 
 This repository contains **only the Go binding** — the native shared library is
 not committed. The library is built from the upstream commit pinned in
-[`lib/version.txt`](lib/version.txt) (currently `master-685-19bdfe2`).
+[`lib/version.txt`](lib/version.txt) (currently `master-802-e92e86f`).
 
 ### Prebuilt archives
 
