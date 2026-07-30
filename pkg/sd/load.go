@@ -203,6 +203,7 @@ func registerFunctions() {
 	purego.RegisterLibFunc(&sdImgGenParamsInit, libSD, "sd_img_gen_params_init")
 	purego.RegisterLibFunc(&sdImgGenParamsToStr, libSD, "sd_img_gen_params_to_str")
 	purego.RegisterLibFunc(&generateImage, libSD, "generate_image")
+	purego.RegisterLibFunc(&sdCancelGeneration, libSD, "sd_cancel_generation")
 	purego.RegisterLibFunc(&sdVidGenParamsInit, libSD, "sd_vid_gen_params_init")
 	purego.RegisterLibFunc(&generateVideo, libSD, "generate_video")
 	purego.RegisterLibFunc(&newUpscalerContext, libSD, "new_upscaler_ctx")
@@ -219,4 +220,5 @@ func registerFunctions() {
 	purego.RegisterLibFunc(&strToSDHiresUpscaler, libSD, "str_to_sd_hires_upscaler")
 	purego.RegisterLibFunc(&sdHiresParamsInit, libSD, "sd_hires_params_init")
 	purego.RegisterLibFunc(&freeSDAudio, libSD, "free_sd_audio")
+	purego.RegisterLibFunc(&freeSDImages, libSD, "free_sd_images")
 }

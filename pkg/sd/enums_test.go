@@ -40,7 +40,9 @@ func TestEnumABIValues(t *testing.T) {
 		{"EulerCFGPPSampleMethod", int32(EulerCFGPPSampleMethod), 15},
 		{"EulerACFGPPSampleMethod", int32(EulerACFGPPSampleMethod), 16},
 		{"EulerGESampleMethod", int32(EulerGESampleMethod), 17},
-		{"SampleMethodCount", int32(SampleMethodCount), 18},
+		{"DPMPP2MSDESampleMethod", int32(DPMPP2MSDESampleMethod), 18},
+		{"DPMPP2MSDEBTSampleMethod", int32(DPMPP2MSDEBTSampleMethod), 19},
+		{"SampleMethodCount", int32(SampleMethodCount), 20},
 
 		// scheduler_t
 		{"DiscreteScheduler", int32(DiscreteScheduler), 0},
@@ -55,7 +57,11 @@ func TestEnumABIValues(t *testing.T) {
 		{"LCMScheduler", int32(LCMScheduler), 9},
 		{"BongTangentScheduler", int32(BongTangentScheduler), 10},
 		{"LTX2Scheduler", int32(LTX2Scheduler), 11},
-		{"SchedulerCount", int32(SchedulerCount), 12},
+		{"LogitNormalScheduler", int32(LogitNormalScheduler), 12},
+		{"Flux2Scheduler", int32(Flux2Scheduler), 13},
+		{"FluxScheduler", int32(FluxScheduler), 14},
+		{"BetaScheduler", int32(BetaScheduler), 15},
+		{"SchedulerCount", int32(SchedulerCount), 16},
 
 		// prediction_t
 		{"EPSPred", int32(EPSPred), 0},
@@ -63,8 +69,9 @@ func TestEnumABIValues(t *testing.T) {
 		{"EDMVPred", int32(EDMVPred), 2},
 		{"FlowPred", int32(FlowPred), 3},
 		{"FluxFlowPred", int32(FluxFlowPred), 4},
-		{"Flux2FlowPred", int32(Flux2FlowPred), 5},
-		{"PredictionCount", int32(PredictionCount), 6},
+		{"SefiFlowPred", int32(SefiFlowPred), 5},
+		{"Minit2iFlowPred", int32(Minit2iFlowPred), 6},
+		{"PredictionCount", int32(PredictionCount), 7},
 
 		// sd_log_level_t
 		{"SDLogDebug", int32(SDLogDebug), 0},
@@ -115,7 +122,13 @@ func TestEnumABIValues(t *testing.T) {
 		{"FluxVAEFormat", int32(FluxVAEFormat), 0},
 		{"SD3VAEFormat", int32(SD3VAEFormat), 1},
 		{"Flux2VAEFormat", int32(Flux2VAEFormat), 2},
-		{"VAEFormatCount", int32(VAEFormatCount), 3},
+		{"WanVAEFormat", int32(WanVAEFormat), 3},
+		{"VAEFormatCount", int32(VAEFormatCount), 4},
+
+		// sd_cancel_mode_t
+		{"CancelAll", int32(CancelAll), 0},
+		{"CancelNewLatents", int32(CancelNewLatents), 1},
+		{"CancelReset", int32(CancelReset), 2},
 
 		// sd_hires_upscaler_t
 		{"HiresUpscalerNone", int32(HiresUpscalerNone), 0},

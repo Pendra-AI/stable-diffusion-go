@@ -1,6 +1,7 @@
 convert
 free_sd_audio
 free_sd_ctx
+free_sd_images
 free_upscaler_ctx
 generate_image
 generate_video
@@ -9,6 +10,7 @@ new_sd_ctx
 new_upscaler_ctx
 preprocess_canny
 sd_cache_params_init
+sd_cancel_generation
 sd_commit
 sd_ctx_params_init
 sd_ctx_params_to_str

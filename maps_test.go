@@ -7,10 +7,11 @@ import (
 )
 
 // TestNewEnumMapEntries guards the string→enum convenience maps for the values
-// added during the master-685 upstream resync. The map keys are this binding's
-// own convention; the values must match the corresponding pkg/sd constants
-// (which are pinned to the C ABI by pkg/sd.TestEnumABIValues). A drift here
-// would silently mis-route a caller's "euler_cfg_pp" to the wrong sampler.
+// added during the master-685 and master-802 upstream resyncs. The map keys
+// are this binding's own convention; the values must match the corresponding
+// pkg/sd constants (which are pinned to the C ABI by
+// pkg/sd.TestEnumABIValues). A drift here would silently mis-route a caller's
+// "euler_cfg_pp" to the wrong sampler.
 func TestNewEnumMapEntries(t *testing.T) {
 	t.Run("SampleMethodMap", func(t *testing.T) {
 		want := map[string]sd.SampleMethod{
@@ -20,6 +21,8 @@ func TestNewEnumMapEntries(t *testing.T) {
 			"euler_cfg_pp":   sd.EulerCFGPPSampleMethod,
 			"euler_a_cfg_pp": sd.EulerACFGPPSampleMethod,
 			"euler_ge":       sd.EulerGESampleMethod,
+			"dpm++2m_sde":    sd.DPMPP2MSDESampleMethod,
+			"dpm++2m_sde_bt": sd.DPMPP2MSDEBTSampleMethod,
 		}
 		for k, v := range want {
 			if got, ok := SampleMethodMap[k]; !ok || got != v {
@@ -32,6 +35,10 @@ func TestNewEnumMapEntries(t *testing.T) {
 		want := map[string]sd.Scheduler{
 			"bong_tangent": sd.BongTangentScheduler,
 			"ltx2":         sd.LTX2Scheduler,
+			"logit_normal": sd.LogitNormalScheduler,
+			"flux2":        sd.Flux2Scheduler,
+			"flux":         sd.FluxScheduler,
+			"beta":         sd.BetaScheduler,
 		}
 		for k, v := range want {
 			if got, ok := SchedulerMap[k]; !ok || got != v {
@@ -52,12 +59,38 @@ func TestNewEnumMapEntries(t *testing.T) {
 		}
 	})
 
+	t.Run("PredictionMap", func(t *testing.T) {
+		want := map[string]sd.Prediction{
+			"eps":          sd.EPSPred,
+			"v":            sd.VPred,
+			"edm_v":        sd.EDMVPred,
+			"flow":         sd.FlowPred,
+			"sd3_flow":     sd.FlowPred,
+			"flux_flow":    sd.FluxFlowPred,
+			"sefi_flow":    sd.SefiFlowPred,
+			"minit2i_flow": sd.Minit2iFlowPred,
+			"default":      sd.PredictionCount,
+		}
+		if len(PredictionMap) != len(want) {
+			t.Errorf("PredictionMap has %d entries, want %d", len(PredictionMap), len(want))
+		}
+		if _, ok := PredictionMap["flux2_flow"]; ok {
+			t.Error("PredictionMap still contains \"flux2_flow\", which upstream removed (its enum slot is now sefi_flow)")
+		}
+		for k, v := range want {
+			if got, ok := PredictionMap[k]; !ok || got != v {
+				t.Errorf("PredictionMap[%q] = %v (ok=%v), want %v", k, got, ok, v)
+			}
+		}
+	})
+
 	t.Run("VAEFormatMap", func(t *testing.T) {
 		want := map[string]sd.SDVAEFormat{
 			"auto":  sd.VAEFormatAuto,
 			"flux":  sd.FluxVAEFormat,
 			"sd3":   sd.SD3VAEFormat,
 			"flux2": sd.Flux2VAEFormat,
+			"wan":   sd.WanVAEFormat,
 		}
 		if len(VAEFormatMap) != len(want) {
 			t.Errorf("VAEFormatMap has %d entries, want %d", len(VAEFormatMap), len(want))
