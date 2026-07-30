@@ -485,6 +485,18 @@ jobs:
           bash scripts/clone-upstream.sh "https://github.com/$env:SD_UPSTREAM.git" "${{ needs.setup.outputs.commit }}" upstream
 
       - name: Build variant (${{ matrix.subdir }})
+        # Upstream's single-TU src/stable-diffusion.cpp grew past MSVC's COFF
+        # section limit at master-802-e92e86f (fatal error C1128), so every MSVC
+        # compile needs /bigobj. Set it via the CXXFLAGS/CFLAGS environment
+        # variables — CMake initializes CMAKE_<LANG>_FLAGS as
+        # "$ENV{<LANG>FLAGS} <platform defaults>", so /bigobj is APPENDED
+        # alongside MSVC's defaults (/DWIN32 /D_WINDOWS /EHsc /GR). Passing
+        # -DCMAKE_CXX_FLAGS=/bigobj instead would REPLACE those defaults and
+        # drop /EHsc (breaking C++ exceptions). Windows-only: /bigobj is not a
+        # valid GCC/Clang flag, so keep it out of the shared SD_BASE_FLAGS.
+        env:
+          CXXFLAGS: /bigobj
+          CFLAGS: /bigobj
         run: |
           $ErrorActionPreference = "Stop"
           $base = $env:SD_BASE_FLAGS -replace "`n"," "
