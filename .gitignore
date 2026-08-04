@@ -8,3 +8,6 @@ lib/windows/cuda13/stable-diffusion.dll
 lib/windows/noavx/stable-diffusion.dll
 lib/windows/rocm/stable-diffusion.dll
 lib/windows/vulkan/stable-diffusion.dll
+
+# Ephemeral upstream clone created by scripts/clone-upstream.sh for local builds
+upstream/
