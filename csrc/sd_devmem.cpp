@@ -39,9 +39,18 @@ SD_API ggml_backend_dev_t sd_backend_dev_get(size_t i) {
 }
 
 // Live free/total device memory in bytes. On CUDA these are real VRAM figures;
-// on Metal ggml reports the working-set. Either out pointer may be NULL.
+// on Metal ggml reports the working-set. Either out pointer may be NULL — ggml's
+// get_memory implementations dereference both unconditionally, so we read into
+// locals here and copy out only what the caller asked for.
 SD_API void sd_backend_dev_memory(ggml_backend_dev_t dev, size_t* free, size_t* total) {
-    ggml_backend_dev_memory(dev, free, total);
+    size_t f = 0, t = 0;
+    ggml_backend_dev_memory(dev, &f, &t);
+    if (free) {
+        *free = f;
+    }
+    if (total) {
+        *total = t;
+    }
 }
 
 // Backend-specific device name, e.g. "CUDA0", "Metal", "Vulkan0", "CPU".
