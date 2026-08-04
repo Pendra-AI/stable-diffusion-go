@@ -9,6 +9,11 @@ get_upscale_factor
 new_sd_ctx
 new_upscaler_ctx
 preprocess_canny
+sd_backend_dev_count
+sd_backend_dev_get
+sd_backend_dev_memory
+sd_backend_dev_name
+sd_backend_dev_type
 sd_cache_params_init
 sd_cancel_generation
 sd_commit

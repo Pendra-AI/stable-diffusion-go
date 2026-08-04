@@ -163,7 +163,8 @@ func Load(libDir string) (err error) {
 
 	libSD = handle
 	registerFunctions()
-	bindCFree() // best-effort; FreeImage/FreeImages no-op if this fails
+	registerDevMemFunctions() // optional sd_backend_dev_* wrappers (v0.3.0+); never fails Load
+	bindCFree()               // best-effort; FreeImage/FreeImages no-op if this fails
 
 	loaded = true
 	return nil
@@ -221,4 +222,25 @@ func registerFunctions() {
 	purego.RegisterLibFunc(&sdHiresParamsInit, libSD, "sd_hires_params_init")
 	purego.RegisterLibFunc(&freeSDAudio, libSD, "free_sd_audio")
 	purego.RegisterLibFunc(&freeSDImages, libSD, "free_sd_images")
+}
+
+// registerDevMemFunctions binds the optional sd_backend_dev_* device-memory
+// wrappers (libstable-diffusion v0.3.0+). Unlike registerFunctions, these are
+// NOT required for image generation, so a lib that predates them must not fail
+// Load. RegisterLibFunc panics on a missing symbol, so recover here and leave
+// devMemAvailable false — GpuDevices then reports the reading unavailable
+// instead of the process crashing. Kept in load.go (not devmem.go) so
+// symbols_test.go's load.go↔expected-symbols reconciliation counts them.
+func registerDevMemFunctions() {
+	defer func() {
+		if r := recover(); r != nil {
+			devMemAvailable = false
+		}
+	}()
+	purego.RegisterLibFunc(&sdBackendDevCount, libSD, "sd_backend_dev_count")
+	purego.RegisterLibFunc(&sdBackendDevGet, libSD, "sd_backend_dev_get")
+	purego.RegisterLibFunc(&sdBackendDevMemory, libSD, "sd_backend_dev_memory")
+	purego.RegisterLibFunc(&sdBackendDevName, libSD, "sd_backend_dev_name")
+	purego.RegisterLibFunc(&sdBackendDevType, libSD, "sd_backend_dev_type")
+	devMemAvailable = true
 }

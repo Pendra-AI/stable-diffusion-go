@@ -253,6 +253,12 @@ jobs:
       - name: Clone upstream stable-diffusion.cpp @ pinned commit
         run: scripts/clone-upstream.sh "https://github.com/${SD_UPSTREAM}.git" "${{ needs.setup.outputs.commit }}" upstream
 
+      # Compile Pendra's sd_backend_dev_* device-memory wrappers into
+      # libstable-diffusion (dropped into upstream/src, picked up by its
+      # src/*.cpp glob). The fail-closed symbol gate below then REQUIRES them.
+      - name: Inject device-memory wrapper into upstream
+        run: scripts/inject-devmem-wrapper.sh upstream
+
       - name: Configure & build
         working-directory: upstream
         run: |
@@ -317,6 +323,12 @@ jobs:
             build-essential cmake ninja-build git ca-certificates curl
       - name: Clone upstream stable-diffusion.cpp @ pinned commit
         run: scripts/clone-upstream.sh "https://github.com/${SD_UPSTREAM}.git" "${{ needs.setup.outputs.commit }}" upstream
+
+      # Compile Pendra's sd_backend_dev_* device-memory wrappers into
+      # libstable-diffusion (dropped into upstream/src, picked up by its
+      # src/*.cpp glob). The fail-closed symbol gate below then REQUIRES them.
+      - name: Inject device-memory wrapper into upstream
+        run: scripts/inject-devmem-wrapper.sh upstream
       - name: Configure & build
         working-directory: upstream
         run: |
@@ -382,6 +394,12 @@ jobs:
         run: brew install cmake ninja
       - name: Clone upstream stable-diffusion.cpp @ pinned commit
         run: scripts/clone-upstream.sh "https://github.com/${SD_UPSTREAM}.git" "${{ needs.setup.outputs.commit }}" upstream
+
+      # Compile Pendra's sd_backend_dev_* device-memory wrappers into
+      # libstable-diffusion (dropped into upstream/src, picked up by its
+      # src/*.cpp glob). The fail-closed symbol gate below then REQUIRES them.
+      - name: Inject device-memory wrapper into upstream
+        run: scripts/inject-devmem-wrapper.sh upstream
       - name: Configure & build
         working-directory: upstream
         run: |
@@ -483,6 +501,14 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           bash scripts/clone-upstream.sh "https://github.com/$env:SD_UPSTREAM.git" "${{ needs.setup.outputs.commit }}" upstream
+
+      # Compile Pendra's sd_backend_dev_* device-memory wrappers into
+      # libstable-diffusion (dropped into upstream/src, picked up by its
+      # src/*.cpp glob). The fail-closed symbol gate below then REQUIRES them.
+      - name: Inject device-memory wrapper into upstream
+        run: |
+          $ErrorActionPreference = "Stop"
+          bash scripts/inject-devmem-wrapper.sh upstream
 
       - name: Build variant (${{ matrix.subdir }})
         # Upstream's single-TU src/stable-diffusion.cpp grew past MSVC's COFF
