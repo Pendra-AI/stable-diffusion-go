@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"unsafe"
 
-	"github.com/Pendra-Cloud/stable-diffusion-go/pkg/sd"
+	"github.com/pendra-ai/stable-diffusion-go/pkg/sd"
 )
 
 // flowShiftOrAuto returns the caller's flow_shift, or the native "auto" sentinel

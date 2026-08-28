@@ -1,4 +1,4 @@
-module github.com/Pendra-Cloud/stable-diffusion-go
+module github.com/pendra-ai/stable-diffusion-go
 
 go 1.24.7
 

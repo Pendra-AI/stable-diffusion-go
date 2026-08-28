@@ -19,7 +19,7 @@ text-to-video generation.
 ## Installation
 
 ```bash
-go get github.com/Pendra-Cloud/stable-diffusion-go
+go get github.com/pendra-ai/stable-diffusion-go
 ```
 
 ## The native library
@@ -31,7 +31,7 @@ not committed. The library is built from the upstream commit pinned in
 ### Prebuilt archives
 
 **The binding and its libraries ship together on one tag.** Every
-[Release](https://github.com/Pendra-Cloud/stable-diffusion-go/releases) is a
+[Release](https://github.com/pendra-ai/stable-diffusion-go/releases) is a
 single `vX.Y.Z` that carries both the Go module (so `go get …@vX.Y.Z` resolves
 the binding) **and** the prebuilt lib archives + `checksums.txt` as assets,
 built by the [`build-libs.yml`](.github/workflows/build-libs.yml) workflow
@@ -47,7 +47,7 @@ stable-diffusion-libs-darwin-arm64-metal.tar.gz
 stable-diffusion-libs-windows-amd64.tar.gz        # carries the subdir tree
 ```
 
-e.g. `https://github.com/Pendra-Cloud/stable-diffusion-go/releases/download/vX.Y.Z/stable-diffusion-libs-linux-amd64-cpu.tar.gz`.
+e.g. `https://github.com/pendra-ai/stable-diffusion-go/releases/download/vX.Y.Z/stable-diffusion-libs-linux-amd64-cpu.tar.gz`.
 
 Each archive ships a **single self-contained library** (ggml is statically
 linked, with hidden visibility so only the `stable-diffusion.cpp` symbols are
@@ -78,7 +78,7 @@ call `Load`, which is lazy, idempotent, and returns an error (never panics) when
 the library is missing or incompatible.
 
 ```go
-import stablediffusion "github.com/Pendra-Cloud/stable-diffusion-go"
+import stablediffusion "github.com/pendra-ai/stable-diffusion-go"
 
 // Load from a directory you control...
 if err := stablediffusion.Load("/path/to/libs"); err != nil {
@@ -103,7 +103,7 @@ package main
 import (
     "log"
 
-    stablediffusion "github.com/Pendra-Cloud/stable-diffusion-go"
+    stablediffusion "github.com/pendra-ai/stable-diffusion-go"
 )
 
 func main() {
