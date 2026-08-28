@@ -660,7 +660,7 @@ jobs:
 
           Built from ${SD_UPSTREAM} @ ${COMMIT} (upstream pin: ${PIN}).
 
-          \`go get github.com/Pendra-Cloud/stable-diffusion-go@${VERSION}\` for the
+          \`go get github.com/pendra-ai/stable-diffusion-go@${VERSION}\` for the
           binding; the lib archives attached here match this exact tag. Each archive
           contains a self-contained libstable-diffusion (ggml statically linked,
           hidden visibility — exports only the sd_* symbols pkg/sd/load.go registers).

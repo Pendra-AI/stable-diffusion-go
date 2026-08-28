@@ -11,7 +11,7 @@ so that **no cgo is required**. It calls the C++ shared library at runtime via
 FFI and exposes a Go API for text-to-image, image-to-image, and text-to-video
 generation across Linux, macOS, and Windows.
 
-The module path is `github.com/Pendra-Cloud/stable-diffusion-go`.
+The module path is `github.com/pendra-ai/stable-diffusion-go`.
 
 ## Layout
 

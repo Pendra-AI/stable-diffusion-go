@@ -1,4 +1,4 @@
-// sd_devmem.cpp — Pendra addition to github.com/Pendra-Cloud/stable-diffusion-go
+// sd_devmem.cpp — Pendra addition to github.com/pendra-ai/stable-diffusion-go
 //
 // Whitelisted, sd_*-prefixed wrappers around ggml's device-memory registry, so a
 // host that only dlopens libstable-diffusion (which statically links ggml with

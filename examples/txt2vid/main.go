@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	stablediffusion "github.com/Pendra-Cloud/stable-diffusion-go"
+	stablediffusion "github.com/pendra-ai/stable-diffusion-go"
 )
 
 func main() {

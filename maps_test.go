@@ -3,7 +3,7 @@ package stable_diffusion
 import (
 	"testing"
 
-	"github.com/Pendra-Cloud/stable-diffusion-go/pkg/sd"
+	"github.com/pendra-ai/stable-diffusion-go/pkg/sd"
 )
 
 // TestNewEnumMapEntries guards the string→enum convenience maps for the values
