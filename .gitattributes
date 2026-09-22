@@ -1,0 +1,2 @@
+# Carried upstream patches must reach git apply byte-for-byte (no CRLF conversion).
+patches/*.patch -text

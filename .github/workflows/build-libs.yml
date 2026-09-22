@@ -259,6 +259,14 @@ jobs:
       - name: Inject device-memory wrapper into upstream
         run: scripts/inject-devmem-wrapper.sh upstream
 
+      # Apply the local upstream fixes carried in patches/ (fail-closed: a patch
+      # that no longer applies stops the build). Then run their regression tests.
+      - name: Apply carried upstream patches
+        run: |
+          set -euo pipefail
+          scripts/apply-upstream-patches.sh upstream
+          scripts/test-upstream-patches.sh upstream
+
       - name: Configure & build
         working-directory: upstream
         run: |
@@ -329,6 +337,14 @@ jobs:
       # src/*.cpp glob). The fail-closed symbol gate below then REQUIRES them.
       - name: Inject device-memory wrapper into upstream
         run: scripts/inject-devmem-wrapper.sh upstream
+
+      # Apply the local upstream fixes carried in patches/ (fail-closed: a patch
+      # that no longer applies stops the build). Then run their regression tests.
+      - name: Apply carried upstream patches
+        run: |
+          set -euo pipefail
+          scripts/apply-upstream-patches.sh upstream
+          scripts/test-upstream-patches.sh upstream
       - name: Configure & build
         working-directory: upstream
         run: |
@@ -400,6 +416,14 @@ jobs:
       # src/*.cpp glob). The fail-closed symbol gate below then REQUIRES them.
       - name: Inject device-memory wrapper into upstream
         run: scripts/inject-devmem-wrapper.sh upstream
+
+      # Apply the local upstream fixes carried in patches/ (fail-closed: a patch
+      # that no longer applies stops the build). Then run their regression tests.
+      - name: Apply carried upstream patches
+        run: |
+          set -euo pipefail
+          scripts/apply-upstream-patches.sh upstream
+          scripts/test-upstream-patches.sh upstream
       - name: Configure & build
         working-directory: upstream
         run: |
@@ -509,6 +533,14 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           bash scripts/inject-devmem-wrapper.sh upstream
+
+      # Apply the local upstream fixes carried in patches/ (fail-closed: a patch
+      # that no longer applies stops the build). Their regression tests run on
+      # the Linux/macOS legs.
+      - name: Apply carried upstream patches
+        run: |
+          $ErrorActionPreference = "Stop"
+          bash scripts/apply-upstream-patches.sh upstream
 
       - name: Build variant (${{ matrix.subdir }})
         # Upstream's single-TU src/stable-diffusion.cpp grew past MSVC's COFF
