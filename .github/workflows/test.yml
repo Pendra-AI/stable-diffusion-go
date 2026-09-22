@@ -67,3 +67,21 @@ jobs:
 
       - name: go test
         run: go test ./...
+
+  # The carried upstream patches (patches/*.patch) must still apply to the
+  # upstream commit pinned in lib/version.txt, and their C++ regression tests
+  # (csrc/test/) must pass against the patched tree. Cheap: a shallow clone plus
+  # one translation unit, no ggml build and no model files.
+  upstream-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone upstream stable-diffusion.cpp @ pinned commit
+        run: scripts/clone-upstream.sh https://github.com/leejet/stable-diffusion.cpp.git "$(tr -d '[:space:]' < lib/version.txt)" upstream
+
+      - name: Apply carried upstream patches
+        run: scripts/apply-upstream-patches.sh upstream
+
+      - name: Test carried upstream patches
+        run: scripts/test-upstream-patches.sh upstream

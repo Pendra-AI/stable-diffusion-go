@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: tomcrawf90 <tomcrawf90@gmail.com>
+Date: Tue, 22 Sep 2026 15:37:08 +0100
+Subject: [PATCH] fix(sd3): map legacy cond_stage_model.* text encoder prefixes
+ to text_encoders.*
+
+All-in-one SD3.x files such as gpustack/stable-diffusion-v3-5-large-turbo-GGUF
+store CLIP-L, CLIP-G and T5-XXL under the SD1.x/SDXL-style prefixes
+cond_stage_model.transformer.*, cond_stage_model.1.transformer.* and
+cond_stage_model.2.transformer.*. SD3CLIPEmbedder only looks for
+text_encoders.{clip_l,clip_g,t5xxl}.*, so it logged "No text encoders
+provided", skipped the text encoders, and sampling crashed on a NULL
+conditioning tensor.
+
+For SD3.x only, rename those prefixes to the text_encoders.* slots. The inner
+names are already in the layout the separate --clip_l/--clip_g/--t5xxl paths
+produce, so no further conversion is needed. SD1.x/SDXL (which legitimately use
+cond_stage_model.*), FLUX and all other versions are unchanged.
+---
+ src/name_conversion.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/name_conversion.cpp b/src/name_conversion.cpp
+index 63c916e..3f042ac 100644
+--- a/src/name_conversion.cpp
++++ b/src/name_conversion.cpp
+@@ -1457,6 +1457,17 @@ std::string convert_tensor_name(std::string name, SDVersion version) {
+ 
+     replace_with_prefix_map(name, prefix_map);
+ 
++    if (sd_version_is_sd3(version)) {
++        // all-in-one SD3.x checkpoints/GGUFs that store the text encoders under the
++        // legacy SD1.x/SDXL-style cond_stage_model.* prefixes
++        static const std::vector<std::pair<std::string, std::string>> sd3_cond_stage_model_prefix_map = {
++            {"cond_stage_model.2.transformer.", "text_encoders.t5xxl.transformer."},
++            {"cond_stage_model.1.transformer.", "text_encoders.clip_g.transformer."},
++            {"cond_stage_model.transformer.", "text_encoders.clip_l.transformer."},
++        };
++        replace_with_prefix_map(name, sd3_cond_stage_model_prefix_map);
++    }
++
+     if (sd_version_is_boogu_image(version) || sd_version_is_krea2(version) || sd_version_is_mage_flow(version)) {
+         const std::string hf_vision_prefix = "text_encoders.llm.model.visual.";
+         if (starts_with(name, hf_vision_prefix)) {

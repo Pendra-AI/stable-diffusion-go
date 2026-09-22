@@ -85,7 +85,10 @@ jobs:
              and \`${latest##*-}\` (structs, enums, signatures).
           2. Update \`pkg/sd\` (and \`lib/expected-symbols.txt\` if the registered
              symbol set changes) to match.
-          3. Validate against a real build + model run.
+          3. Re-port each patch in \`patches/\` against the new commit (or drop
+             it if upstream now has the fix); the build fails closed until they
+             all apply.
+          4. Validate against a real build + model run.
 
           Note: this PR was opened with \`GITHUB_TOKEN\`, so the Test workflow
           won't auto-run on it — re-trigger it (e.g. close/reopen or push an

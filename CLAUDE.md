@@ -30,6 +30,10 @@ The module path is `github.com/pendra-ai/stable-diffusion-go`.
   - `utils.go` — image conversion (`EncodePNG`, `SaveImage`, `toRGBA`), I/O, GPU
     detection.
 - `examples/txt2img/`, `examples/txt2vid/` — one `package main` per directory.
+- `patches/` — `git format-patch` fixes to upstream carried until they land
+  there, applied by `scripts/apply-upstream-patches.sh` after the clone in
+  every build leg. `csrc/test/` holds their C++ regression tests, run by
+  `scripts/test-upstream-patches.sh` (CI job `upstream-patches` in `test.yml`).
 - `lib/` — version pin and license text only. The actual `.so`/`.dylib`/`.dll`
   are **not** committed; they come from
   `leejet/stable-diffusion.cpp` releases matching `lib/version.txt`.
@@ -53,6 +57,11 @@ The module path is `github.com/pendra-ai/stable-diffusion-go`.
 - **Symbol completeness.** `registerFunctions` binds the full symbol set; the
   native library must export all of them or `Load` fails. Keep the binding and
   `lib/version.txt` in lockstep with the upstream commit they target.
+- **Carry upstream fixes as patches, not a fork.** Fix upstream bugs with a
+  minimal patch in `patches/` (numbered, generated with `git format-patch`
+  against the pinned commit) plus a regression test in `csrc/test/`, and send
+  the fix upstream too. Application is fail-closed, so a pin bump must re-port
+  each patch or drop it once upstream has the fix.
 - **Cross-platform build tags.** Changes must keep `GOOS=linux`, `darwin`, and
   `windows` all compiling. Use the existing `_unix.go` / `_windows.go` split for
   platform-specific code rather than `runtime.GOOS` branching where a build tag

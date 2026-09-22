@@ -64,8 +64,32 @@ archives need a Vulkan loader/ICD.
 | macOS | `libstable-diffusion.dylib` |
 | Windows | `stable-diffusion.dll` (under a variant subdir) |
 
-To build it yourself instead, compile `stable-diffusion.cpp` at the pinned
-commit with `-DSD_BUILD_SHARED_LIBS=ON`. The binding registers the full
+### Carried upstream patches
+
+The libraries are built from upstream plus a small set of bug fixes that have
+not landed upstream yet, kept as `git format-patch` files in
+[`patches/`](patches/) and applied in filename order by
+[`scripts/apply-upstream-patches.sh`](scripts/apply-upstream-patches.sh) right
+after the clone. Application is fail-closed: if a patch stops applying after a
+pin bump, the build fails until the patch is re-ported (or dropped because
+upstream fixed it). Their regression tests live in [`csrc/test/`](csrc/test/)
+and run via [`scripts/test-upstream-patches.sh`](scripts/test-upstream-patches.sh).
+
+| Patch | Fixes |
+| --- | --- |
+| `0001-sd3-legacy-text-encoder-prefixes.patch` | All-in-one SD3.x files that store CLIP-L / CLIP-G / T5-XXL under legacy `cond_stage_model.*` prefixes (e.g. `gpustack/stable-diffusion-v3-5-large-turbo-GGUF`) loaded no text encoders and crashed on the first sampling step. |
+
+To build it yourself instead, clone `stable-diffusion.cpp` at the pinned
+commit, apply the patches, and compile with `-DSD_BUILD_SHARED_LIBS=ON`:
+
+```bash
+scripts/clone-upstream.sh https://github.com/leejet/stable-diffusion.cpp.git "$(cat lib/version.txt)" upstream
+scripts/inject-devmem-wrapper.sh upstream
+scripts/apply-upstream-patches.sh upstream
+cmake -S upstream -B upstream/build -DCMAKE_BUILD_TYPE=Release -DSD_BUILD_SHARED_LIBS=ON  # plus e.g. -DSD_METAL=ON
+cmake --build upstream/build -j
+```
+ The binding registers the full
 `stable-diffusion.cpp` symbol set ([`lib/expected-symbols.txt`](lib/expected-symbols.txt)),
 so the library must export all of them — keep the library version in lockstep
 with `lib/version.txt`.
