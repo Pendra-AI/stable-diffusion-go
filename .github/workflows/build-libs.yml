@@ -35,7 +35,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: "Limit to one variant id for a gating run (linux-amd64-cpu | linux-amd64-vulkan | linux-amd64-cuda | linux-arm64-cpu | darwin-arm64-metal | windows-amd64). Empty = full matrix. Manual runs never publish a release."
+        description: "Limit to one variant id for a gating run (linux-amd64-cpu | linux-amd64-vulkan | linux-amd64-cuda | linux-arm64-cpu | linux-arm64-cuda | darwin-arm64-metal | windows-amd64). Empty = full matrix. Manual runs never publish a release."
         required: false
         default: ""
   push:
@@ -65,6 +65,13 @@ env:
   # Turing→Blackwell. Pascal/Volta (sm_61/sm_70) are intentionally dropped.
   # Used by the Linux CUDA build (container, fast nvcc).
   CUDA_ARCHS: "75;80;86;89;90;100;120"
+  # Linux arm64 CUDA build. Targets the arm64-native NVIDIA devices: Jetson Orin
+  # (sm_87) and DGX Spark / GB10 (sm_121). 120 alone does not cover GB10 — ggml
+  # rewrites a plain 12X to the architecture-specific 12Xa, which is not
+  # forwards-compatible — so 121 is listed explicitly. sm_87 is therefore the
+  # floor: discrete cards older than that in an arm64 server (e.g. sm_75/80/86)
+  # are NOT covered by this archive; add their arches here if that is needed.
+  CUDA_ARCHS_ARM64: "87;121"
   # Windows nvcc on the 4-core runner is far slower than Linux, and building all
   # seven arches sequentially after the four CPU + Vulkan variants pushed the
   # Windows job past an hour. Trim Windows to SASS for the common desktop arches
@@ -106,6 +113,7 @@ jobs:
       linux_matrix: ${{ steps.m.outputs.linux_matrix }}
       run_linux: ${{ steps.m.outputs.run_linux }}
       run_cuda: ${{ steps.m.outputs.run_cuda }}
+      run_cuda_arm64: ${{ steps.m.outputs.run_cuda_arm64 }}
       run_macos: ${{ steps.m.outputs.run_macos }}
       run_windows: ${{ steps.m.outputs.run_windows }}
       run_full: ${{ steps.m.outputs.run_full }}
@@ -207,6 +215,7 @@ jobs:
           echo "linux_matrix=$linux_matrix" >> "$GITHUB_OUTPUT"
           [ "$linux_matrix" != "[]" ] && echo "run_linux=true" >> "$GITHUB_OUTPUT" || echo "run_linux=false" >> "$GITHUB_OUTPUT"
           want linux-amd64-cuda  && echo "run_cuda=true"    >> "$GITHUB_OUTPUT" || echo "run_cuda=false"    >> "$GITHUB_OUTPUT"
+          want linux-arm64-cuda  && echo "run_cuda_arm64=true" >> "$GITHUB_OUTPUT" || echo "run_cuda_arm64=false" >> "$GITHUB_OUTPUT"
           want darwin-arm64-metal && echo "run_macos=true"  >> "$GITHUB_OUTPUT" || echo "run_macos=false"  >> "$GITHUB_OUTPUT"
           want windows-amd64     && echo "run_windows=true" >> "$GITHUB_OUTPUT" || echo "run_windows=false" >> "$GITHUB_OUTPUT"
           [ -z "${ONLY}" ] && echo "run_full=true" >> "$GITHUB_OUTPUT" || echo "run_full=false" >> "$GITHUB_OUTPUT"
@@ -394,6 +403,111 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: linux-amd64-cuda
+          path: stable-diffusion-libs-*.tar.gz
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Linux arm64 CUDA — the linux-cuda job on the arm64 runner (the CUDA devel
+  # image is multi-arch), for NVIDIA arm64 hosts such as DGX Spark and Jetson.
+  # Like every GPU leg here it builds, links and symbol-checks only: the runner
+  # has no GPU, so nothing is executed on one.
+  # ---------------------------------------------------------------------------
+  linux-cuda-arm64:
+    needs: setup
+    if: ${{ needs.setup.outputs.run_cuda_arm64 == 'true' && needs.setup.outputs.skip != 'true' }}
+    runs-on: ubuntu-22.04-arm
+    container: nvidia/cuda:13.0.0-devel-ubuntu22.04
+    # Inside a container the default step shell is `sh` (dash), which lacks
+    # `set -o pipefail`; force bash (present in the ubuntu-based CUDA image).
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tooling
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build git ca-certificates curl
+      - name: Clone upstream stable-diffusion.cpp @ pinned commit
+        run: scripts/clone-upstream.sh "https://github.com/${SD_UPSTREAM}.git" "${{ needs.setup.outputs.commit }}" upstream
+
+      # Compile Pendra's sd_backend_dev_* device-memory wrappers into
+      # libstable-diffusion (dropped into upstream/src, picked up by its
+      # src/*.cpp glob). The fail-closed symbol gate below then REQUIRES them.
+      - name: Inject device-memory wrapper into upstream
+        run: scripts/inject-devmem-wrapper.sh upstream
+
+      # Apply the local upstream fixes carried in patches/ (fail-closed: a patch
+      # that no longer applies stops the build). Then run their regression tests.
+      - name: Apply carried upstream patches
+        run: |
+          set -euo pipefail
+          scripts/apply-upstream-patches.sh upstream
+          scripts/test-upstream-patches.sh upstream
+      - name: Configure & build
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          # Same flags as linux-cuda minus the x86-only -DGGML_AVX2=ON (arm64
+          # uses NEON). GGML_NATIVE stays OFF so the CPU code is not tuned to
+          # the runner, and GGML_CUDA_NCCL stays OFF for the reason given there.
+          cmake -S . -B build -G Ninja $SD_BASE_FLAGS \
+            -DSD_CUDA=ON -DGGML_NATIVE=OFF \
+            -DGGML_CUDA_NCCL=OFF \
+            -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS_ARM64}"
+          cmake --build build --config Release -j
+      - name: Locate library
+        id: lib
+        run: |
+          set -euo pipefail
+          so="$(find upstream/build -name 'libstable-diffusion.so' -print -quit)"
+          test -n "$so" || { echo "libstable-diffusion.so not found"; find upstream/build -name '*.so' | sed 's/^/  found: /'; exit 1; }
+          echo "path=$so" >> "$GITHUB_OUTPUT"
+      - name: Verify exported symbols (fail-closed)
+        run: scripts/check-symbols.sh "${{ steps.lib.outputs.path }}" lib/expected-symbols.txt
+      - name: Verify no NCCL runtime dependency (fail-closed)
+        run: |
+          set -euo pipefail
+          # Guard against GGML_CUDA_NCCL silently turning back on (toolkit/default
+          # change): the CUDA lib must not carry a libnccl NEEDED entry, or it
+          # won't load on hosts without libnccl2 installed.
+          if readelf -d "${{ steps.lib.outputs.path }}" | grep -qi 'NEEDED.*libnccl'; then
+            echo "ERROR: libstable-diffusion.so links libnccl — rebuild with -DGGML_CUDA_NCCL=OFF" >&2
+            readelf -d "${{ steps.lib.outputs.path }}" | grep -i needed >&2
+            exit 1
+          fi
+          echo "OK: no libnccl NEEDED dependency"
+      - name: Verify aarch64 ELF and list runtime dependencies (fail-closed)
+        run: |
+          set -euo pipefail
+          # The runner has no GPU, so this leg cannot load the library; record
+          # what it is and what the host must provide (CUDA 13 runtime) instead.
+          so="${{ steps.lib.outputs.path }}"
+          ls -l "$so"
+          hdr="$(readelf -h "$so")"; needed="$(readelf -d "$so" | grep NEEDED || true)"
+          grep -E 'Class|Machine' <<<"$hdr"
+          echo "$needed"
+          grep -q 'Machine:.*AArch64' <<<"$hdr" \
+            || { echo "ERROR: libstable-diffusion.so is not an AArch64 ELF" >&2; exit 1; }
+          for dep in libcudart.so.13 libcublas.so.13; do
+            grep -qF "[$dep]" <<<"$needed" \
+              || { echo "ERROR: libstable-diffusion.so does not link $dep — not a CUDA 13 build" >&2; exit 1; }
+          done
+      - name: Package archive
+        run: |
+          set -euo pipefail
+          stage="stage"; mkdir -p "$stage"
+          cp "${{ steps.lib.outputs.path }}" "$stage/"
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          name="stable-diffusion-libs-linux-arm64-cuda.tar.gz"
+          tar -C "$stage" -czf "$name" .
+          echo "Packaged $name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64-cuda
           path: stable-diffusion-libs-*.tar.gz
           if-no-files-found: error
 
@@ -654,13 +768,14 @@ jobs:
   # assets on the existing release in place.
   # ---------------------------------------------------------------------------
   release:
-    needs: [setup, linux, linux-cuda, macos, windows_assemble]
+    needs: [setup, linux, linux-cuda, linux-cuda-arm64, macos, windows_assemble]
     if: >-
       ${{ always() && github.event_name == 'push'
           && needs.setup.outputs.run_full == 'true'
           && needs.setup.outputs.skip != 'true'
           && needs.linux.result == 'success'
           && needs.linux-cuda.result == 'success'
+          && needs.linux-cuda-arm64.result == 'success'
           && needs.macos.result == 'success'
           && needs.windows_assemble.result == 'success' }}
     runs-on: ubuntu-latest
