@@ -56,7 +56,9 @@ another in-process library that has its own `ggml`). The Windows archive
 contains the GPU/CPU variant subdirectories the loader selects from
 (`avx2/`, `avx512/`, `avx/`, `noavx/`, `vulkan/`, `cuda13/`); extract it whole
 and point `Load` at its root. CUDA archives need a host CUDA runtime; Vulkan
-archives need a Vulkan loader/ICD.
+archives need a Vulkan loader/ICD. The Linux arm64 CUDA archive is built for
+Jetson Orin (`sm_87`) and DGX Spark / GB10 (`sm_121`) and needs the CUDA 13
+runtime; older discrete cards in an arm64 server are not covered.
 
 | Platform | Library file |
 | --- | --- |

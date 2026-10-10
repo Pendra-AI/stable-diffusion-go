@@ -65,11 +65,12 @@ env:
   # Turing→Blackwell. Pascal/Volta (sm_61/sm_70) are intentionally dropped.
   # Used by the Linux CUDA build (container, fast nvcc).
   CUDA_ARCHS: "75;80;86;89;90;100;120"
-  # Linux arm64 CUDA build. NVIDIA GPUs on arm64 hosts are a different set from
-  # the x86 desktop/server cards above: Jetson Orin (sm_87) and DGX Spark / GB10
-  # (sm_121). 120 alone does not cover GB10 — ggml rewrites a plain 12X to the
-  # architecture-specific 12Xa, which is not forwards-compatible — so 121 is
-  # listed explicitly.
+  # Linux arm64 CUDA build. Targets the arm64-native NVIDIA devices: Jetson Orin
+  # (sm_87) and DGX Spark / GB10 (sm_121). 120 alone does not cover GB10 — ggml
+  # rewrites a plain 12X to the architecture-specific 12Xa, which is not
+  # forwards-compatible — so 121 is listed explicitly. sm_87 is therefore the
+  # floor: discrete cards older than that in an arm64 server (e.g. sm_75/80/86)
+  # are NOT covered by this archive; add their arches here if that is needed.
   CUDA_ARCHS_ARM64: "87;121"
   # Windows nvcc on the 4-core runner is far slower than Linux, and building all
   # seven arches sequentially after the four CPU + Vulkan variants pushed the
@@ -486,7 +487,7 @@ jobs:
           # what it is and what the host must provide (CUDA 13 runtime) instead.
           so="${{ steps.lib.outputs.path }}"
           ls -l "$so"
-          hdr="$(readelf -h "$so")"; needed="$(readelf -d "$so" | grep NEEDED)"
+          hdr="$(readelf -h "$so")"; needed="$(readelf -d "$so" | grep NEEDED || true)"
           grep -E 'Class|Machine' <<<"$hdr"
           echo "$needed"
           grep -q 'Machine:.*AArch64' <<<"$hdr" \
