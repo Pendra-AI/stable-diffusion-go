@@ -633,7 +633,10 @@ jobs:
           # and aborts with "Path Validation Error" unless caching is disabled.
           use-github-cache: false
           use-local-cache: false
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cuda_profiler_api"]'
+          # CUDA 13 split the compiler: cuda_runtime.h includes crt/host_config.h
+          # from the separate "crt" component and nvcc's cicc lives in "nvvm".
+          # With "nvcc" alone CMake's CUDA compiler check fails (C1083).
+          sub-packages: '["nvcc", "crt", "nvvm", "cudart", "cublas", "cublas_dev", "cuda_profiler_api"]'
 
       - name: Clone upstream stable-diffusion.cpp @ pinned commit
         run: |
