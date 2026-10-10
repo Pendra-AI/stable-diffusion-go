@@ -42,7 +42,7 @@ version-less — the release tag carries the version:
 
 ```
 stable-diffusion-libs-linux-amd64-cpu.tar.gz      # also -cuda, -vulkan
-stable-diffusion-libs-linux-arm64-cpu.tar.gz
+stable-diffusion-libs-linux-arm64-cpu.tar.gz      # also -cuda
 stable-diffusion-libs-darwin-arm64-metal.tar.gz
 stable-diffusion-libs-windows-amd64.tar.gz        # carries the subdir tree
 ```
