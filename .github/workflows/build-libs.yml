@@ -72,13 +72,14 @@ env:
   # floor: discrete cards older than that in an arm64 server (e.g. sm_75/80/86)
   # are NOT covered by this archive; add their arches here if that is needed.
   CUDA_ARCHS_ARM64: "87;121"
-  # Windows nvcc on the 4-core runner is far slower than Linux, and building all
-  # seven arches sequentially after the four CPU + Vulkan variants pushed the
-  # Windows job past an hour. Trim Windows to SASS for the common desktop arches
-  # (Ampere-consumer 86, Ada 89) plus full SASS+PTX for Blackwell-consumer 120 —
-  # the PTX gives forward-compatible JIT for newer GPUs. Other arches (Turing,
-  # Hopper/Blackwell-DC) are rare on Windows desktops; Linux keeps the full set.
-  CUDA_ARCHS_WINDOWS: "86-real;89-real;120"
+  # Windows CUDA build: ggml's own default list for CUDA 13 (what the Windows
+  # llama.cpp CUDA build ships), without the arm64-only 121a. "virtual" is PTX
+  # the driver compiles at first use, "real" is machine code, so every card from
+  # Turing (7.5, the CUDA 13 floor) up has a kernel image. A card with none does
+  # not fail at load: it fails at the first generation ("no kernel image is
+  # available for execution on the device"), so the list must never start above
+  # 75. Each arch is one more pass of nvcc over ggml-cuda on a 4-core runner.
+  CUDA_ARCHS_WINDOWS: "75-virtual;80-virtual;86-real;89-real;90-virtual;120a-real"
   # Shared base flags for every variant. Hidden visibility + static ggml is the
   # isolation mechanism; SD_API (default visibility) re-exports only sd_*.
   # SD_WEBP/SD_WEBM are forced OFF: upstream vendors them as submodules that
@@ -583,12 +584,13 @@ jobs:
     # CUDA leg pins windows-2022 so nvcc gets a VS2022 host compiler it supports
     # (windows-latest now ships VS18 / MSVC 14.51, which CUDA 13's nvcc rejects).
     runs-on: ${{ matrix.runner || 'windows-latest' }}
-    # The CUDA leg is best-effort: nothing Pendra ships bundles Windows CUDA SD
-    # (NVIDIA-on-Windows uses the Vulkan build; cudart is a separate ~half-GiB
-    # non-redistributable download), and a host/CUDA toolchain mismatch must
-    # never block the release. continue-on-error keeps a cuda13 build failure
-    # from failing the job (so windows_assemble + release still run); the
-    # assemble step treats the cuda13 DLL as optional.
+    # The CUDA leg is best-effort: a host/CUDA toolchain mismatch must never
+    # block the release. continue-on-error keeps a cuda13 build failure from
+    # failing the job (so windows_assemble + release still run); the assemble
+    # step treats the cuda13 DLL as optional. The cuda13 DLL imports
+    # cublas64_13.dll (which loads cublasLt64_13.dll) and finds the driver's
+    # nvcuda.dll at run time; the consumer must put the two cuBLAS DLLs on the
+    # DLL search path.
     continue-on-error: ${{ matrix.optional || false }}
     strategy:
       fail-fast: false
@@ -633,7 +635,10 @@ jobs:
           # and aborts with "Path Validation Error" unless caching is disabled.
           use-github-cache: false
           use-local-cache: false
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cuda_profiler_api"]'
+          # CUDA 13 split the compiler: cuda_runtime.h includes crt/host_config.h
+          # from the separate "crt" component and nvcc's cicc lives in "nvvm".
+          # With "nvcc" alone CMake's CUDA compiler check fails (C1083).
+          sub-packages: '["nvcc", "crt", "nvvm", "cudart", "cublas", "cublas_dev", "cuda_profiler_api"]'
 
       - name: Clone upstream stable-diffusion.cpp @ pinned commit
         run: |
@@ -682,6 +687,22 @@ jobs:
           if (-not $dll) { throw "stable-diffusion.dll not found for ${{ matrix.subdir }}" }
           New-Item -ItemType Directory -Force -Path "stage/${{ matrix.subdir }}" | Out-Null
           Copy-Item $dll.FullName "stage/${{ matrix.subdir }}/"
+
+      # What the DLL imports is what a host (or the consumer's installer) must
+      # provide. Fail closed on the backend's own runtime: a CUDA build that does
+      # not import cuBLAS, or a Vulkan build that does not import the Vulkan
+      # loader, was silently built for the CPU.
+      - name: Report runtime dependencies (${{ matrix.subdir }})
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dll = "stage/${{ matrix.subdir }}/stable-diffusion.dll"
+          $deps = & dumpbin /DEPENDENTS $dll |
+            Select-String -Pattern '^\s+(\S+\.dll)\s*$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+          Write-Host "stable-diffusion.dll (${{ matrix.subdir }}) imports:"; $deps | ForEach-Object { Write-Host "  $_" }
+          Write-Host "size: $((Get-Item $dll).Length) bytes"
+          $runtime = @{ cpu = @(); vulkan = @("vulkan-1.dll"); cuda = @("cublas64_13.dll") }
+          $missing = $runtime["${{ matrix.kind }}"] | Where-Object { $deps -notcontains $_ }
+          if ($missing) { throw "stable-diffusion.dll does not import: $($missing -join ', ')" }
 
       # Each leg uploads only its own subdir/stable-diffusion.dll; the
       # windows_assemble job merges them into the final subdir-tree archive.
