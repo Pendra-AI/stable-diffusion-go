@@ -3,6 +3,7 @@
 package sd
 
 import (
+	"errors"
 	"fmt"
 
 	"golang.org/x/sys/windows"
@@ -29,8 +30,11 @@ func displayAdapters() ([]displayAdapter, error) {
 	var out []displayAdapter
 	for i := 0; ; i++ {
 		info, err := devs.EnumDeviceInfo(i)
+		if errors.Is(err, windows.ERROR_NO_MORE_ITEMS) {
+			break
+		}
 		if err != nil {
-			break // ERROR_NO_MORE_ITEMS
+			return nil, fmt.Errorf("list display adapters: %w", err)
 		}
 		var a displayAdapter
 		if v, err := devs.DeviceRegistryProperty(info, windows.SPDRP_DEVICEDESC); err == nil {

@@ -42,6 +42,7 @@ func gpuVendorFromAdapters(adapters []displayAdapter) string {
 }
 
 func adapterGPUVendor(a displayAdapter) string {
+	paravirtual := false
 	for _, id := range a.hardwareIDs {
 		id = strings.ToUpper(id)
 		if !strings.HasPrefix(id, `PCI\`) {
@@ -52,6 +53,23 @@ func adapterGPUVendor(a displayAdapter) string {
 				return p.vendor
 			}
 		}
+		// A host GPU shared into a Hyper-V guest is a PCI device of Microsoft's
+		// that carries the host card's name.
+		if strings.Contains(id, "VEN_1414") {
+			paravirtual = true
+		}
+	}
+	if !paravirtual {
+		return ""
+	}
+	name := strings.ToUpper(a.name)
+	switch {
+	case strings.Contains(name, "NVIDIA"):
+		return "NVIDIA"
+	case strings.Contains(name, "AMD"), strings.Contains(name, "RADEON"):
+		return "AMD"
+	case strings.Contains(name, "INTEL"):
+		return "Intel"
 	}
 	return ""
 }

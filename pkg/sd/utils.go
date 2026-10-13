@@ -53,13 +53,22 @@ func GetVulkanGPU() (string, error) {
 // program. It used to run `wmic path win32_VideoController get name`, and a
 // failure to run wmic read as "no GPU": recent Windows 11 does not install
 // wmic, and a PATH without System32\Wbem cannot find it, so Load fell back to a
-// CPU build on a GPU machine. wmic is still tried if the device manager cannot
-// be read.
+// CPU build on a GPU machine. wmic is still tried when the device manager
+// cannot be read or names no GPU, so no machine the old probe recognised is
+// lost; its failure then just means "none".
 func GetGPUName() (string, error) {
-	if adapters, err := displayAdapters(); err == nil {
-		return gpuVendorFromAdapters(adapters), nil
+	adapters, err := displayAdapters()
+	if err == nil {
+		if vendor := gpuVendorFromAdapters(adapters); vendor != "" {
+			return vendor, nil
+		}
 	}
-	return gpuNameFromWMIC()
+	vendor, wmicErr := gpuNameFromWMIC()
+	if err == nil {
+		// The device manager answered; wmic was only a second opinion.
+		return vendor, nil
+	}
+	return vendor, wmicErr
 }
 
 // gpuNameFromWMIC is the old detection, kept as the fallback.

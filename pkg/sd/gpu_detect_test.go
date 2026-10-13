@@ -22,6 +22,7 @@ func TestGPUVendorFromAdapters(t *testing.T) {
 		{"a discrete card wins over the integrated one listed first", []displayAdapter{iris, l4}, "NVIDIA"},
 		{"amd wins over intel", []displayAdapter{iris, radeon}, "AMD"},
 		{"lower-case hardware id", []displayAdapter{{name: "x", hardwareIDs: []string{`pci\ven_10de&dev_1234`}}}, "NVIDIA"},
+		{"a host gpu shared into a hyper-v guest", []displayAdapter{{name: "NVIDIA GeForce RTX 4090", hardwareIDs: []string{`PCI\VEN_1414&DEV_008E`}}}, "NVIDIA"},
 		{"a virtual adapter named after a vendor", []displayAdapter{{name: "NVIDIA Virtual Display", hardwareIDs: []string{`ROOT\NVVAD`}}}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
