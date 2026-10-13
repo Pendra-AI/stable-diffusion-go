@@ -46,8 +46,33 @@ func GetVulkanGPU() (string, error) {
 	return "Vulkan Device", nil
 }
 
-// GetGPUName gets GPU name
+// GetGPUName names the vendor of this Windows machine's hardware GPU: "NVIDIA",
+// "AMD", "Intel", or "" when it has none. Load uses it to pick a GPU build.
+//
+// It reads the present display adapters from the device manager, which runs no
+// program. It used to run `wmic path win32_VideoController get name`, and a
+// failure to run wmic read as "no GPU": recent Windows 11 does not install
+// wmic, and a PATH without System32\Wbem cannot find it, so Load fell back to a
+// CPU build on a GPU machine. wmic is still tried when the device manager
+// cannot be read or names no GPU, so no machine the old probe recognised is
+// lost; its failure then just means "none".
 func GetGPUName() (string, error) {
+	adapters, err := displayAdapters()
+	if err == nil {
+		if vendor := gpuVendorFromAdapters(adapters); vendor != "" {
+			return vendor, nil
+		}
+	}
+	vendor, wmicErr := gpuNameFromWMIC()
+	if err == nil {
+		// The device manager answered; wmic was only a second opinion.
+		return vendor, nil
+	}
+	return vendor, wmicErr
+}
+
+// gpuNameFromWMIC is the old detection, kept as the fallback.
+func gpuNameFromWMIC() (string, error) {
 	cmd := exec.Command("wmic", "path", "win32_VideoController", "get", "name")
 	output, err := cmd.Output()
 	if err != nil {
