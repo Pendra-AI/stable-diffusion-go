@@ -70,6 +70,7 @@ var SampleMethodMap = map[string]sd.SampleMethod{
 	"euler_ge":            sd.EulerGESampleMethod,
 	"dpm++2m_sde":         sd.DPMPP2MSDESampleMethod,
 	"dpm++2m_sde_bt":      sd.DPMPP2MSDEBTSampleMethod,
+	"lms":                 sd.LMSSampleMethod,
 	"sample_method_count": sd.SampleMethodCount,
 }
 
@@ -92,6 +93,7 @@ var SchedulerMap = map[string]sd.Scheduler{
 	"flux2":           sd.Flux2Scheduler,
 	"flux":            sd.FluxScheduler,
 	"beta":            sd.BetaScheduler,
+	"llada_image":     sd.LLaDAImageScheduler,
 	"scheduler_count": sd.SchedulerCount,
 }
 
@@ -100,15 +102,19 @@ var SchedulerMap = map[string]sd.Scheduler{
 // MINIT2I_FLOW_PRED; its canonical name for FLOW_PRED is "sd3_flow" ("flow" is
 // kept as this binding's legacy alias).
 var PredictionMap = map[string]sd.Prediction{
-	"eps":          sd.EPSPred,
-	"v":            sd.VPred,
-	"edm_v":        sd.EDMVPred,
-	"flow":         sd.FlowPred,
-	"sd3_flow":     sd.FlowPred,
-	"flux_flow":    sd.FluxFlowPred,
-	"sefi_flow":    sd.SefiFlowPred,
-	"minit2i_flow": sd.Minit2iFlowPred,
-	"default":      sd.PredictionCount, // Default
+	"eps":               sd.EPSPred,
+	"v":                 sd.VPred,
+	"edm_v":             sd.EDMVPred,
+	"flow":              sd.FlowPred,
+	"sd3_flow":          sd.FlowPred,
+	"flux_flow":         sd.FluxFlowPred,
+	"sefi_flow":         sd.SefiFlowPred,
+	"minit2i_flow":      sd.Minit2iFlowPred,
+	"sensenova_u1_flow": sd.SenseNovaU1FlowPred,
+	"flux3_flow":        sd.Flux3FlowPred,
+	"h3_av_flow":        sd.H3AVFlowPred,
+	"ming_image_flow":   sd.MingImageFlowPred,
+	"default":           sd.PredictionCount, // Default
 }
 
 // SDTypeMap SDType mapping
@@ -154,6 +160,9 @@ var SDTypeMap = map[string]sd.SDType{
 	"mxfp4":   sd.SDTypeMXFP4,
 	"nvfp4":   sd.SDTypeNVFP4,
 	"q1_0":    sd.SDTypeQ1_0,
+	"q2_0":    sd.SDTypeQ2_0,
+	"f8_e4m3": sd.SDTypeF8_E4M3,
+	"f8_e5m2": sd.SDTypeF8_E5M2,
 	"default": sd.SDTypeCount, // Default
 }
 

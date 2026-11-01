@@ -39,6 +39,7 @@ const (
 	EulerGESampleMethod
 	DPMPP2MSDESampleMethod
 	DPMPP2MSDEBTSampleMethod
+	LMSSampleMethod
 	SampleMethodCount
 )
 
@@ -61,6 +62,7 @@ const (
 	Flux2Scheduler
 	FluxScheduler
 	BetaScheduler
+	LLaDAImageScheduler
 	SchedulerCount
 )
 
@@ -77,6 +79,10 @@ const (
 	// (same integer value, 5) and appended MINIT2I_FLOW_PRED.
 	SefiFlowPred
 	Minit2iFlowPred
+	SenseNovaU1FlowPred
+	Flux3FlowPred
+	H3AVFlowPred
+	MingImageFlowPred
 	PredictionCount
 )
 
@@ -122,16 +128,23 @@ const (
 	// SDTypeIQ4_NL_4_4 = 36,
 	// SDTypeIQ4_NL_4_8 = 37,
 	// SDTypeIQ4_NL_8_8 = 38,
-	SDTypeMXFP4 = 39
-	SDTypeNVFP4 = 40 // NVFP4 (4 blocks, E4M3 scale)
-	SDTypeQ1_0  = 41
-	SDTypeCount = 42
+	SDTypeMXFP4   = 39
+	SDTypeNVFP4   = 40 // NVFP4 (4 blocks, E4M3 scale)
+	SDTypeQ1_0    = 41
+	SDTypeQ2_0    = 42
+	SDTypeF8_E4M3 = 43
+	SDTypeF8_E5M2 = 44
+	SDTypeCount   = 45
 )
 
+// SDLogLevel mirrors enum sd_log_level_t. Compare levels through these constants
+// only: SD_LOG_VERBOSE took slot 1 at the master-1031 resync, which moved
+// INFO/WARN/ERROR from 1/2/3 to 2/3/4.
 type SDLogLevel int32
 
 const (
 	SDLogDebug SDLogLevel = iota
+	SDLogVerbose
 	SDLogInfo
 	SDLogWarn
 	SDLogError

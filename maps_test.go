@@ -7,7 +7,7 @@ import (
 )
 
 // TestNewEnumMapEntries guards the string→enum convenience maps for the values
-// added during the master-685 and master-802 upstream resyncs. The map keys
+// added during the master-685, master-802 and master-1031 upstream resyncs. The map keys
 // are this binding's own convention; the values must match the corresponding
 // pkg/sd constants (which are pinned to the C ABI by
 // pkg/sd.TestEnumABIValues). A drift here would silently mis-route a caller's
@@ -23,6 +23,7 @@ func TestNewEnumMapEntries(t *testing.T) {
 			"euler_ge":       sd.EulerGESampleMethod,
 			"dpm++2m_sde":    sd.DPMPP2MSDESampleMethod,
 			"dpm++2m_sde_bt": sd.DPMPP2MSDEBTSampleMethod,
+			"lms":            sd.LMSSampleMethod,
 		}
 		for k, v := range want {
 			if got, ok := SampleMethodMap[k]; !ok || got != v {
@@ -39,6 +40,7 @@ func TestNewEnumMapEntries(t *testing.T) {
 			"flux2":        sd.Flux2Scheduler,
 			"flux":         sd.FluxScheduler,
 			"beta":         sd.BetaScheduler,
+			"llada_image":  sd.LLaDAImageScheduler,
 		}
 		for k, v := range want {
 			if got, ok := SchedulerMap[k]; !ok || got != v {
@@ -49,8 +51,11 @@ func TestNewEnumMapEntries(t *testing.T) {
 
 	t.Run("SDTypeMap", func(t *testing.T) {
 		want := map[string]sd.SDType{
-			"nvfp4": sd.SDTypeNVFP4,
-			"q1_0":  sd.SDTypeQ1_0,
+			"nvfp4":   sd.SDTypeNVFP4,
+			"q1_0":    sd.SDTypeQ1_0,
+			"q2_0":    sd.SDTypeQ2_0,
+			"f8_e4m3": sd.SDTypeF8_E4M3,
+			"f8_e5m2": sd.SDTypeF8_E5M2,
 		}
 		for k, v := range want {
 			if got, ok := SDTypeMap[k]; !ok || got != v {
@@ -61,15 +66,19 @@ func TestNewEnumMapEntries(t *testing.T) {
 
 	t.Run("PredictionMap", func(t *testing.T) {
 		want := map[string]sd.Prediction{
-			"eps":          sd.EPSPred,
-			"v":            sd.VPred,
-			"edm_v":        sd.EDMVPred,
-			"flow":         sd.FlowPred,
-			"sd3_flow":     sd.FlowPred,
-			"flux_flow":    sd.FluxFlowPred,
-			"sefi_flow":    sd.SefiFlowPred,
-			"minit2i_flow": sd.Minit2iFlowPred,
-			"default":      sd.PredictionCount,
+			"eps":               sd.EPSPred,
+			"v":                 sd.VPred,
+			"edm_v":             sd.EDMVPred,
+			"flow":              sd.FlowPred,
+			"sd3_flow":          sd.FlowPred,
+			"flux_flow":         sd.FluxFlowPred,
+			"sefi_flow":         sd.SefiFlowPred,
+			"minit2i_flow":      sd.Minit2iFlowPred,
+			"sensenova_u1_flow": sd.SenseNovaU1FlowPred,
+			"flux3_flow":        sd.Flux3FlowPred,
+			"h3_av_flow":        sd.H3AVFlowPred,
+			"ming_image_flow":   sd.MingImageFlowPred,
+			"default":           sd.PredictionCount,
 		}
 		if len(PredictionMap) != len(want) {
 			t.Errorf("PredictionMap has %d entries, want %d", len(PredictionMap), len(want))
