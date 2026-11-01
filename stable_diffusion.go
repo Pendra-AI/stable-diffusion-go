@@ -421,6 +421,7 @@ type VidGenParams struct {
 	Strength     float32          // Noise/denoise strength (range [0.0, 1.0])
 	Seed         int64            // RNG seed (< 0 for random seed)
 	VideoFrames  int32            // Number of video frames to generate
+	Fps          int32            // Frames per second of the generated video (0 = library default, 16)
 	VaceStrength float32          // Wan VACE strength
 	CacheParams  sd.SDCacheParams // Cache parameters for DiT models
 	CircularX    bool             // Enable circular padding on X axis (moved here from ContextParams by the master-802 upstream resync)
@@ -1206,6 +1207,10 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 		vidGenParams.VideoFrames = 1
 	}
 	sdVidGenParams.VideoFrames = vidGenParams.VideoFrames
+
+	if vidGenParams.Fps != 0 {
+		sdVidGenParams.Fps = vidGenParams.Fps
+	}
 
 	if vidGenParams.VaceStrength == 0 {
 		vidGenParams.VaceStrength = 1

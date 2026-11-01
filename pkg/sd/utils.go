@@ -131,13 +131,14 @@ func toNRGBA(img *SDImage) (*image.NRGBA, error) {
 		return nil, fmt.Errorf("invalid image dimensions %dx%d", img.Width, img.Height)
 	}
 
-	// Compute the pixel-buffer length in uint64 to avoid the uint32 overflow
-	// that a direct Width*Height*Channel multiply would risk, then guard it
-	// against the platform int size before slicing/indexing.
-	count := uint64(img.Width) * uint64(img.Height) * uint64(img.Channel)
-	if count > uint64(math.MaxInt) {
-		return nil, fmt.Errorf("image too large: %d bytes", count)
+	// Width*Height fits in a uint64, but a further multiply might not, so bound
+	// it by what both the source buffer (Channel bytes per pixel) and the NRGBA
+	// image (4 bytes per pixel) can address before slicing or allocating.
+	pixelCount := uint64(img.Width) * uint64(img.Height)
+	if pixelCount > uint64(math.MaxInt)/uint64(max(img.Channel, 4)) {
+		return nil, fmt.Errorf("image too large: %dx%d with %d channels", img.Width, img.Height, img.Channel)
 	}
+	count := pixelCount * uint64(img.Channel)
 
 	// Create NRGBA image
 	nrgba := image.NewNRGBA(image.Rect(0, 0, int(img.Width), int(img.Height)))

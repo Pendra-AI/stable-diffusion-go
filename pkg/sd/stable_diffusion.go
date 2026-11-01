@@ -646,7 +646,10 @@ var (
 // package performs no filesystem access and no dlopen.
 
 // Wrapper functions
-type SDLogLevelType int32
+
+// SDLogLevelType is the level handed to an SDLogCallbackType. It is SDLogLevel, so
+// the SDLog* constants compare against it directly.
+type SDLogLevelType = SDLogLevel
 
 type SDLogCallbackType func(level SDLogLevelType, text string, data interface{})
 

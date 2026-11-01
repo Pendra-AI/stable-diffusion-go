@@ -51,6 +51,10 @@ func TestCallbackSignaturesAcceptedByPurego(t *testing.T) {
 	mustWrap(t, "SDPreviewCallback", previewCB)
 }
 
+// The log callback's level type must take the SDLog* constants, whose integers
+// moved at master-1031, so callers never need a literal.
+var _ SDLogLevelType = SDLogVerbose
+
 // Passing nil clears a callback. purego panics when handed a nil func, so the
 // setters must reach the library with a 0 callback instead.
 func TestClearingCallbacksPassesNull(t *testing.T) {

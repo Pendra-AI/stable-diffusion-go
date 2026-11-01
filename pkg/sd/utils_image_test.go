@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,22 @@ func TestToNRGBAOpaqueForOtherChannelCounts(t *testing.T) {
 		}
 		if !nrgba.Opaque() {
 			t.Errorf("channel %d: image is not opaque", c.channel)
+		}
+	}
+}
+
+// Dimensions whose byte count wraps a uint64, or fits the source buffer but not the
+// 4-byte-per-pixel image, are errors. Neither reads the data, so one byte is enough.
+func TestToNRGBARejectsOversizedImages(t *testing.T) {
+	var data uint8
+	cases := []SDImage{
+		{Width: 1 << 31, Height: 1 << 31, Channel: 4, Data: &data},
+		{Width: math.MaxUint32, Height: math.MaxUint32, Channel: math.MaxUint32, Data: &data},
+		{Width: 1 << 31, Height: 1 << 30, Channel: 3, Data: &data},
+	}
+	for _, img := range cases {
+		if _, err := toNRGBA(&img); err == nil {
+			t.Errorf("toNRGBA(%dx%dx%d) = nil error", img.Width, img.Height, img.Channel)
 		}
 	}
 }
