@@ -302,7 +302,7 @@ jobs:
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           # Version-less name: the release TAG (vX.Y.Z) carries the version, so
           # the download URL is .../releases/download/<tag>/<this fixed name>.
           name="stable-diffusion-libs-linux-${{ matrix.arch }}-${{ matrix.proc }}.tar.gz"
@@ -397,7 +397,7 @@ jobs:
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           name="stable-diffusion-libs-linux-amd64-cuda.tar.gz"
           tar -C "$stage" -czf "$name" .
           echo "Packaged $name"
@@ -502,7 +502,7 @@ jobs:
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           name="stable-diffusion-libs-linux-arm64-cuda.tar.gz"
           tar -C "$stage" -czf "$name" .
           echo "Packaged $name"
@@ -559,7 +559,7 @@ jobs:
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           name="stable-diffusion-libs-darwin-arm64-metal.tar.gz"
           tar -C "$stage" -czf "$name" .
           echo "Packaged $name"
@@ -770,7 +770,7 @@ jobs:
       - name: Package archive
         run: |
           $ErrorActionPreference = "Stop"
-          Copy-Item lib/stable-diffusion.cpp.txt,lib/ggml.txt stage/ -ErrorAction SilentlyContinue
+          Copy-Item lib/stable-diffusion.cpp.txt,lib/ggml.txt,lib/oniguruma.txt,lib/utf8proc.txt stage/ -ErrorAction SilentlyContinue
           $name = "stable-diffusion-libs-windows-amd64.tar.gz"
           tar -C stage -czf $name .
           Write-Host "Packaged $name"
