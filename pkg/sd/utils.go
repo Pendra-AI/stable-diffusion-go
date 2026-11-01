@@ -114,10 +114,13 @@ func GetCpuAVX() string {
 	}
 }
 
-// toRGBA converts a raw SDImage into a Go *image.RGBA. It reads the first three
-// channels as RGB (ignoring any extra channels) and adds an opaque alpha
-// channel. Malformed or oversized inputs return an error rather than panicking.
-func toRGBA(img *SDImage) (*image.RGBA, error) {
+// toNRGBA converts a raw SDImage into a Go *image.NRGBA, whose colour channels are
+// not premultiplied by alpha. That matches the library's output, so a 4-channel
+// image (e.g. from Ming-Image) keeps its transparency and the RGB of its
+// transparent pixels. Other channel counts read the first three channels as RGB
+// and come out opaque. Malformed or oversized inputs return an error rather than
+// panicking.
+func toNRGBA(img *SDImage) (*image.NRGBA, error) {
 	if img == nil || img.Data == nil {
 		return nil, fmt.Errorf("invalid image data")
 	}
@@ -136,37 +139,37 @@ func toRGBA(img *SDImage) (*image.RGBA, error) {
 		return nil, fmt.Errorf("image too large: %d bytes", count)
 	}
 
-	// Create RGBA image
-	bounds := image.Rect(0, 0, int(img.Width), int(img.Height))
-	rgba := image.NewRGBA(bounds)
+	// Create NRGBA image
+	nrgba := image.NewNRGBA(image.Rect(0, 0, int(img.Width), int(img.Height)))
 
-	// Convert raw data to RGBA format, reading 3 channels per pixel.
+	// Copy the raw data into its pixels, which are laid out row by row with no
+	// padding because the image is freshly allocated.
 	data := unsafe.Slice(img.Data, int(count))
 	channel := int(img.Channel)
-	width := int(img.Width)
-	pixels := width * int(img.Height)
+	pixels := int(img.Width) * int(img.Height)
 	for i := 0; i < pixels; i++ {
-		index := i * channel
-		x := i % width
-		y := i / width
-
-		rgba.Set(x, y, color.RGBA{data[index], data[index+1], data[index+2], 255}) // opaque alpha
+		src := data[i*channel:]
+		dst := nrgba.Pix[i*4:]
+		dst[0], dst[1], dst[2], dst[3] = src[0], src[1], src[2], 255
+		if channel == 4 {
+			dst[3] = src[3]
+		}
 	}
 
-	return rgba, nil
+	return nrgba, nil
 }
 
 // EncodePNG encodes an SDImage as PNG and returns the bytes, without touching
 // the filesystem — useful for serving generated images directly (e.g. base64
 // over an API) instead of round-tripping through a file.
 func EncodePNG(img *SDImage) ([]byte, error) {
-	rgba, err := toRGBA(img)
+	nrgba, err := toNRGBA(img)
 	if err != nil {
 		return nil, err
 	}
 
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, rgba); err != nil {
+	if err := png.Encode(&buf, nrgba); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -174,7 +177,7 @@ func EncodePNG(img *SDImage) ([]byte, error) {
 
 // SaveImage saves SDImage as PNG file
 func SaveImage(img *SDImage, path string) error {
-	rgba, err := toRGBA(img)
+	nrgba, err := toNRGBA(img)
 	if err != nil {
 		return err
 	}
@@ -187,7 +190,7 @@ func SaveImage(img *SDImage, path string) error {
 	defer file.Close()
 
 	// Save as PNG
-	return png.Encode(file, rgba)
+	return png.Encode(file, nrgba)
 }
 
 // LoadImage loads image from file and converts to SDImage format
@@ -221,15 +224,15 @@ func LoadImage(path string) (SDImage, error) {
 	index := 0
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			// Get pixel color (ignore Alpha channel)
-			r, g, b, _ := img.At(x, y).RGBA()
+			// Get the pixel color without its alpha. color.Color.RGBA would
+			// return it premultiplied, darkening translucent pixels.
+			c := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
 
-			// Convert RGBA to 8-bit RGB
-			data[index] = uint8(r >> 8) // R
+			data[index] = c.R
 			index++
-			data[index] = uint8(g >> 8) // G
+			data[index] = c.G
 			index++
-			data[index] = uint8(b >> 8) // B
+			data[index] = c.B
 			index++
 		}
 	}

@@ -1,32 +1,144 @@
 package sd
 
 import (
+	"bytes"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
+	"unsafe"
 )
 
-// TestToRGBAReadsFirstThreeChannels feeds a 4-channel (RGBA) buffer and checks
-// toRGBA reads R,G,B from the first three channels, skips the 4th, and forces an
-// opaque alpha — i.e. the per-pixel stride honours Channel, not a hard-coded 3.
-func TestToRGBAReadsFirstThreeChannels(t *testing.T) {
+// TestToNRGBAKeepsAlphaOfFourChannels feeds a 4-channel (RGBA) buffer and checks
+// the alpha survives, i.e. the per-pixel stride honours Channel and the fourth
+// channel is not replaced by an opaque one.
+func TestToNRGBAKeepsAlphaOfFourChannels(t *testing.T) {
 	const w, h = 2, 1
-	// Pixel0 = (10,20,30, 40-ignored), Pixel1 = (50,60,70, 80-ignored)
 	data := []uint8{10, 20, 30, 40, 50, 60, 70, 80}
 	img := &SDImage{Width: w, Height: h, Channel: 4, Data: &data[0]}
 
-	rgba, err := toRGBA(img)
+	nrgba, err := toNRGBA(img)
 	if err != nil {
-		t.Fatalf("toRGBA returned error: %v", err)
+		t.Fatalf("toNRGBA returned error: %v", err)
 	}
-	for x, want := range [][3]uint8{{10, 20, 30}, {50, 60, 70}} {
-		r, g, b, a := rgba.At(x, 0).RGBA()
-		if uint8(r>>8) != want[0] || uint8(g>>8) != want[1] || uint8(b>>8) != want[2] {
-			t.Errorf("pixel %d RGB = (%d,%d,%d), want %v", x, uint8(r>>8), uint8(g>>8), uint8(b>>8), want)
+	if !bytes.Equal(nrgba.Pix, data) {
+		t.Errorf("Pix = %v, want %v", nrgba.Pix, data)
+	}
+}
+
+// Three channels come out opaque, and so does anything wider than RGBA, where the
+// extra channels have no agreed meaning.
+func TestToNRGBAOpaqueForOtherChannelCounts(t *testing.T) {
+	cases := []struct {
+		channel uint32
+		data    []uint8
+	}{
+		{3, []uint8{10, 20, 30, 40, 50, 60}},
+		{5, []uint8{10, 20, 30, 99, 99, 40, 50, 60, 99, 99}},
+	}
+	for _, c := range cases {
+		nrgba, err := toNRGBA(&SDImage{Width: 2, Height: 1, Channel: c.channel, Data: &c.data[0]})
+		if err != nil {
+			t.Fatalf("channel %d: %v", c.channel, err)
 		}
-		if uint8(a>>8) != 255 {
-			t.Errorf("pixel %d alpha = %d, want 255 (opaque)", x, uint8(a>>8))
+		if want := []uint8{10, 20, 30, 255, 40, 50, 60, 255}; !bytes.Equal(nrgba.Pix, want) {
+			t.Errorf("channel %d: Pix = %v, want %v", c.channel, nrgba.Pix, want)
 		}
+		if !nrgba.Opaque() {
+			t.Errorf("channel %d: image is not opaque", c.channel)
+		}
+	}
+}
+
+// decodeNRGBA decodes PNG bytes and returns the straight, non-premultiplied
+// pixels. It reads Pix because color.Color.RGBA premultiplies, which would report
+// a fully transparent pixel as 0,0,0,0 whatever the file holds.
+func decodeNRGBA(t *testing.T, encoded []byte) *image.NRGBA {
+	t.Helper()
+	decoded, err := png.Decode(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatalf("png.Decode: %v", err)
+	}
+	nrgba, ok := decoded.(*image.NRGBA)
+	if !ok {
+		t.Fatalf("decoded image is %T, want *image.NRGBA (a PNG with an alpha channel)", decoded)
+	}
+	return nrgba
+}
+
+// A generated RGBA image reaches the PNG straight: a fully transparent pixel
+// keeps its RGB, and a translucent one is not darkened by premultiplying.
+func TestEncodePNGPreservesAlpha(t *testing.T) {
+	data := []uint8{
+		200, 100, 50, 0, // fully transparent, RGB must survive
+		200, 100, 50, 128, // translucent
+		1, 2, 3, 255, // opaque
+	}
+	encoded, err := EncodePNG(&SDImage{Width: 3, Height: 1, Channel: 4, Data: &data[0]})
+	if err != nil {
+		t.Fatalf("EncodePNG: %v", err)
+	}
+	if got := decodeNRGBA(t, encoded); !bytes.Equal(got.Pix, data) {
+		t.Errorf("decoded Pix = %v, want %v", got.Pix, data)
+	}
+}
+
+func TestEncodePNGThreeChannelsStayRGB(t *testing.T) {
+	data := []uint8{9, 8, 7}
+	encoded, err := EncodePNG(&SDImage{Width: 1, Height: 1, Channel: 3, Data: &data[0]})
+	if err != nil {
+		t.Fatalf("EncodePNG: %v", err)
+	}
+	decoded, err := png.Decode(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatalf("png.Decode: %v", err)
+	}
+	if _, ok := decoded.(*image.RGBA); ok {
+		return // RGB PNGs decode to *image.RGBA with opaque alpha
+	}
+	t.Errorf("decoded image is %T, want an alpha-less PNG", decoded)
+}
+
+// SaveImage, and SaveFrames through it, writes the same bytes as EncodePNG.
+func TestSaveImageAndFramesPreserveAlpha(t *testing.T) {
+	data := []uint8{200, 100, 50, 0, 1, 2, 3, 128}
+	img := SDImage{Width: 2, Height: 1, Channel: 4, Data: &data[0]}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "alpha.png")
+	if err := SaveImage(&img, path); err != nil {
+		t.Fatalf("SaveImage: %v", err)
+	}
+	if err := SaveFrames([]SDImage{img}, dir); err != nil {
+		t.Fatalf("SaveFrames: %v", err)
+	}
+	for _, p := range []string{path, filepath.Join(dir, "frame_0001.png")} {
+		encoded, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		if got := decodeNRGBA(t, encoded); !bytes.Equal(got.Pix, data) {
+			t.Errorf("%s: Pix = %v, want %v", p, got.Pix, data)
+		}
+	}
+}
+
+// LoadImage drops the alpha of an input image and keeps its straight RGB, as
+// upstream's image loader does.
+func TestLoadImageKeepsStraightRGB(t *testing.T) {
+	data := []uint8{200, 100, 50, 128}
+	path := filepath.Join(t.TempDir(), "translucent.png")
+	if err := SaveImage(&SDImage{Width: 1, Height: 1, Channel: 4, Data: &data[0]}, path); err != nil {
+		t.Fatalf("SaveImage: %v", err)
+	}
+
+	loaded, err := LoadImage(path)
+	if err != nil {
+		t.Fatalf("LoadImage: %v", err)
+	}
+	if got := unsafe.Slice(loaded.Data, 3); got[0] != 200 || got[1] != 100 || got[2] != 50 {
+		t.Errorf("RGB = %v, want [200 100 50]", got)
 	}
 }
 
@@ -60,11 +172,11 @@ func TestSaveLoadImageRoundTrip(t *testing.T) {
 	}
 
 	// Spot-check pixel (2,1) survived the round trip.
-	rgba, err := toRGBA(&loaded)
+	nrgba, err := toNRGBA(&loaded)
 	if err != nil {
-		t.Fatalf("toRGBA on loaded image: %v", err)
+		t.Fatalf("toNRGBA on loaded image: %v", err)
 	}
-	r, g, b, _ := rgba.At(2, 1).RGBA()
+	r, g, b, _ := nrgba.At(2, 1).RGBA()
 	got := [3]uint8{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8)}
 	want := [3]uint8{2 * 10, 1 * 20, 2 + 1 + 1}
 	if got != want {
