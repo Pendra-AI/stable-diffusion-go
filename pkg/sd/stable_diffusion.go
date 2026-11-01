@@ -224,14 +224,21 @@ const (
 )
 
 // Define structs
+
+// SDTilingParams mirrors sd_tiling_params_t. The master-1031 resync renamed the
+// X/Y fields to W/H without changing the layout.
 type SDTilingParams struct {
-	Enabled         bool
-	TemporalTiling  bool
-	TileSizeX       int32
-	TileSizeY       int32
-	TargetOverlap   float32
-	RelSizeX        float32
-	RelSizeY        float32
+	Enabled        bool
+	TemporalTiling bool
+	// TileSizeW and TileSizeH are the spatial tile dimensions in image pixels,
+	// for both encode and decode; 0 uses 256.
+	TileSizeW     int32
+	TileSizeH     int32
+	TargetOverlap float32
+	// RelSizeW and RelSizeH override the tile size when positive: <= 1 is a
+	// fraction of the dimension, > 1 a target tile count.
+	RelSizeW        float32
+	RelSizeH        float32
 	ExtraTilingArgs *uint8
 }
 
@@ -240,20 +247,19 @@ type SDEmbedding struct {
 	Path *uint8
 }
 
-// SDContextParams mirrors sd_ctx_params_t at upstream master-802-e92e86f.
+// SDContextParams mirrors sd_ctx_params_t at upstream master-1031-c6dfa9d.
 // Field order, types and implicit padding MUST match the C struct exactly —
-// this layout is what crosses the FFI boundary. Notable drift from the
-// previous pin (master-685-19bdfe2):
-//   - added: IPAdapterPath, MotionModulePath (after ControlNetPath),
-//     PulidWeightsPath (after PhotoMakerPath), EagerLoad, SplitMode, AutoFit,
-//     RPCServers, ModelArgs
-//   - removed: VAEDecodeOnly, FreeParamsImmediately, OffloadParamsToCPU,
-//     KeepClipOnCPU, KeepControlNetOnCPU, KeepVAEOnCPU, CircularX, CircularY
-//     (the latter two moved into the img/vid gen params), ChromaUseDitMask,
-//     ChromaUseT5Mask, ChromaT5MaskPad, QwenImageZeroCondT (chroma/qwen knobs
-//     moved into the free-form ModelArgs key=value list)
-//   - changed: MaxVRAM is now a C string (GiB budget or backend assignment
-//     spec), no longer a float
+// this layout is what crosses the FFI boundary, and TestStructLayoutMatchesHeader
+// pins it. Notable drift from the previous pin (master-802-e92e86f):
+//   - added: AudioEncoderPath (after AudioVAEPath); DisableSegmentedCompute,
+//     BatchedCFG, LinearScale, AttnScale, Tokenizer, SageAttn,
+//     ConditioningCacheSize, FlashAttnMode, ConvDirectMode (after ModelArgs)
+//   - replaced: StreamLayers became DisablePrefetch in the same slot, with the
+//     opposite sense. Segmented streaming is automatic now and prefetch is on
+//     unless disabled, so there is nothing left to opt into.
+//   - library defaults changed: AutoFit is true (was false), BatchedCFG is true
+//     and ConditioningCacheSize is 4, so set them after ContextParamsInit, not
+//     from a zero value.
 type SDContextParams struct {
 	ModelPath                   *uint8
 	ClipLPath                   *uint8
@@ -268,6 +274,7 @@ type SDContextParams struct {
 	EmbeddingsConnectorsPath    *uint8
 	VAEPath                     *uint8
 	AudioVAEPath                *uint8
+	AudioEncoderPath            *uint8
 	TAESDPath                   *uint8
 	ControlNetPath              *uint8
 	IPAdapterPath               *uint8
@@ -292,7 +299,7 @@ type SDContextParams struct {
 	ForceSDXLVAConvScale        bool
 	VAEFormat                   SDVAEFormat
 	MaxVRAM                     *uint8
-	StreamLayers                bool
+	DisablePrefetch             bool // disable asynchronous next-segment weight prefetch
 	EagerLoad                   bool
 	Backend                     *uint8
 	ParamsBackend               *uint8
@@ -300,6 +307,15 @@ type SDContextParams struct {
 	AutoFit                     bool
 	RPCServers                  *uint8
 	ModelArgs                   *uint8
+	DisableSegmentedCompute     bool    // force monolithic graph execution
+	BatchedCFG                  bool    // run the CFG branches in one batched forward when supported
+	LinearScale                 float32 // override linear input scaling; 0 keeps the model default
+	AttnScale                   float32 // override flash-attention K/V scaling; 0 keeps the model default
+	Tokenizer                   *uint8  // tokenizer.json path or main=FILE,clip-l=FILE,clip-g=FILE assignments; required for PiD and Lens
+	SageAttn                    bool
+	ConditioningCacheSize       int32  // cached conditioning entries per context; 0 disables caching
+	FlashAttnMode               *uint8 // on/off/auto or module assignments; nil or empty honours the legacy flags
+	ConvDirectMode              *uint8 // on/off/auto or diffusion/vae/controlnet assignments; nil or empty honours the legacy flags
 }
 
 type SDImage struct {
@@ -307,6 +323,52 @@ type SDImage struct {
 	Height  uint32
 	Channel uint32
 	Data    *uint8
+}
+
+// SDImageResult mirrors sd_image_result_t, one item of a generation result.
+// GenerationInfo is owned UTF-8 JSON using the sdcpp.generation/v1 schema.
+type SDImageResult struct {
+	Image          SDImage
+	GenerationInfo *uint8
+}
+
+// SDImagePreprocessParams mirrors sd_image_preprocess_params_t. Rules is a list
+// of semicolon-separated target=...,key=value rules; nil preserves the defaults.
+type SDImagePreprocessParams struct {
+	Rules *uint8
+}
+
+// SDRefVideo mirrors sd_ref_video_t, a reference video for video generation.
+type SDRefVideo struct {
+	Frames     *SDImage
+	FrameCount int32
+	Fps        int32
+	Audio      SDAudio
+}
+
+// SDPreviewInfo mirrors sd_preview_info_t. SamplePass counts sampling passes from
+// 1 since the last SetPreviewCallback; TotalSteps is the step count of that pass.
+// Both are zero before sampling starts.
+type SDPreviewInfo struct {
+	SamplePass int32
+	TotalSteps int32
+}
+
+// cImageGenerationResult mirrors sd_image_generation_result_t. Items is an array
+// of Count SDImageResult, not of SDImage. Callers use SDImageGenerationResult.
+type cImageGenerationResult struct {
+	Items *SDImageResult
+	Count int32
+}
+
+// cVideoGenerationResult mirrors sd_video_generation_result_t. Callers use
+// SDVideoGenerationResult.
+type cVideoGenerationResult struct {
+	Frames         *SDImage
+	FrameCount     int32
+	Audio          *SDAudio
+	Fps            int32
+	GenerationInfo *uint8
 }
 
 type SDSLGParams struct {
@@ -398,8 +460,8 @@ type SDHiresParams struct {
 	CustomSigmasCount int32
 }
 
-// SDAudio mirrors sd_audio_t. It is returned by generate_video for audio-capable
-// video models (e.g. LTX2); the image path does not produce it.
+// SDAudio mirrors sd_audio_t. It is produced by audio-capable video models (e.g.
+// LTX2) and accepted as a reference by generate_video.
 type SDAudio struct {
 	SampleRate  uint32
 	Channels    uint32
@@ -407,11 +469,8 @@ type SDAudio struct {
 	Data        *float32
 }
 
-// SDImgGenParams mirrors sd_img_gen_params_t at upstream master-802-e92e86f.
-// Drift from the previous pin: AutoResizeRefImage/IncreaseRefIndex were
-// replaced by the free-form RefImageArgs C string; IPAdapterImage,
-// IPAdapterStrength, PulidParams, QwenImageLayers, CircularX and CircularY
-// were added.
+// SDImgGenParams mirrors sd_img_gen_params_t at upstream master-1031-c6dfa9d.
+// Drift from the previous pin: ImagePreprocess was appended.
 type SDImgGenParams struct {
 	Loras             *SDLora
 	LoraCount         uint32
@@ -441,8 +500,13 @@ type SDImgGenParams struct {
 	QwenImageLayers   int32
 	CircularX         bool
 	CircularY         bool
+	ImagePreprocess   SDImagePreprocessParams
 }
 
+// SDVidGenParams mirrors sd_vid_gen_params_t at upstream master-1031-c6dfa9d.
+// Drift from the previous pin: RefImages, RefImagesCount, RefVideos,
+// RefVideosCount, RefAudios and RefAudiosCount were inserted before
+// ControlFrames, and ImagePreprocess and RefImageArgs were appended.
 type SDVidGenParams struct {
 	Loras                 *SDLora
 	LoraCount             uint32
@@ -451,6 +515,12 @@ type SDVidGenParams struct {
 	ClipSkip              int32
 	InitImage             SDImage
 	EndImage              SDImage
+	RefImages             *SDImage
+	RefImagesCount        int32
+	RefVideos             *SDRefVideo
+	RefVideosCount        int32
+	RefAudios             *SDAudio
+	RefAudiosCount        int32
 	ControlFrames         *SDImage
 	ControlFramesSize     int32
 	Width                 int32
@@ -468,6 +538,8 @@ type SDVidGenParams struct {
 	Hires                 SDHiresParams
 	CircularX             bool
 	CircularY             bool
+	ImagePreprocess       SDImagePreprocessParams
+	RefImageArgs          *uint8
 }
 
 // Define context types
