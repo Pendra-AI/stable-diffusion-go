@@ -518,7 +518,9 @@ jobs:
   macos:
     needs: setup
     if: ${{ needs.setup.outputs.run_macos == 'true' && needs.setup.outputs.skip != 'true' }}
-    runs-on: macos-14
+    # GitHub retired the macos-14 image on 2026-11-02. The deployment target below
+    # keeps the library loadable on macOS 14 regardless of the runner's own version.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Install build tooling
@@ -543,7 +545,7 @@ jobs:
         working-directory: upstream
         run: |
           set -euo pipefail
-          cmake -S . -B build -G Ninja $SD_BASE_FLAGS -DSD_METAL=ON
+          cmake -S . -B build -G Ninja $SD_BASE_FLAGS -DSD_METAL=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
           cmake --build build --config Release -j
       - name: Locate library
         id: lib
@@ -554,6 +556,14 @@ jobs:
           echo "path=$dylib" >> "$GITHUB_OUTPUT"
       - name: Verify exported symbols (fail-closed)
         run: scripts/check-symbols.sh "${{ steps.lib.outputs.path }}" lib/expected-symbols.txt
+      # The default target is the runner's own macOS, so a runner upgrade would
+      # otherwise raise the minimum OS without anyone choosing to.
+      - name: Verify minimum macOS (fail-closed)
+        run: |
+          set -euo pipefail
+          minos="$(vtool -show-build "${{ steps.lib.outputs.path }}" | awk '$1 == "minos" {print $2}')"
+          echo "minos=$minos"
+          test "$minos" = "14.0" || { echo "expected minos 14.0, got '$minos'" >&2; exit 1; }
       - name: Package archive
         run: |
           set -euo pipefail
