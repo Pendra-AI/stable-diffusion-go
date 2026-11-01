@@ -36,6 +36,13 @@ std::vector<std::string> split_string(const std::string& str, char delimiter) {
     return result;
 }
 
+// model.h's version helpers look traits up in the model registry, which pulls in
+// every model. None of the versions tested below uses a Wan VAE, the one trait
+// name_conversion.cpp asks about, so no traits is the correct answer here.
+const ModelTraits* find_model_traits(SDVersion) {
+    return nullptr;
+}
+
 static int failures = 0;
 
 static void expect(const char* in, SDVersion version, const char* want) {

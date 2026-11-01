@@ -42,7 +42,8 @@ func TestEnumABIValues(t *testing.T) {
 		{"EulerGESampleMethod", int32(EulerGESampleMethod), 17},
 		{"DPMPP2MSDESampleMethod", int32(DPMPP2MSDESampleMethod), 18},
 		{"DPMPP2MSDEBTSampleMethod", int32(DPMPP2MSDEBTSampleMethod), 19},
-		{"SampleMethodCount", int32(SampleMethodCount), 20},
+		{"LMSSampleMethod", int32(LMSSampleMethod), 20},
+		{"SampleMethodCount", int32(SampleMethodCount), 21},
 
 		// scheduler_t
 		{"DiscreteScheduler", int32(DiscreteScheduler), 0},
@@ -61,7 +62,8 @@ func TestEnumABIValues(t *testing.T) {
 		{"Flux2Scheduler", int32(Flux2Scheduler), 13},
 		{"FluxScheduler", int32(FluxScheduler), 14},
 		{"BetaScheduler", int32(BetaScheduler), 15},
-		{"SchedulerCount", int32(SchedulerCount), 16},
+		{"LLaDAImageScheduler", int32(LLaDAImageScheduler), 16},
+		{"SchedulerCount", int32(SchedulerCount), 17},
 
 		// prediction_t
 		{"EPSPred", int32(EPSPred), 0},
@@ -71,13 +73,19 @@ func TestEnumABIValues(t *testing.T) {
 		{"FluxFlowPred", int32(FluxFlowPred), 4},
 		{"SefiFlowPred", int32(SefiFlowPred), 5},
 		{"Minit2iFlowPred", int32(Minit2iFlowPred), 6},
-		{"PredictionCount", int32(PredictionCount), 7},
+		{"SenseNovaU1FlowPred", int32(SenseNovaU1FlowPred), 7},
+		{"Flux3FlowPred", int32(Flux3FlowPred), 8},
+		{"H3AVFlowPred", int32(H3AVFlowPred), 9},
+		{"MingImageFlowPred", int32(MingImageFlowPred), 10},
+		{"PredictionCount", int32(PredictionCount), 11},
 
-		// sd_log_level_t
+		// sd_log_level_t — SD_LOG_VERBOSE took slot 1 at master-1031, which
+		// shifted INFO/WARN/ERROR up by one.
 		{"SDLogDebug", int32(SDLogDebug), 0},
-		{"SDLogInfo", int32(SDLogInfo), 1},
-		{"SDLogWarn", int32(SDLogWarn), 2},
-		{"SDLogError", int32(SDLogError), 3},
+		{"SDLogVerbose", int32(SDLogVerbose), 1},
+		{"SDLogInfo", int32(SDLogInfo), 2},
+		{"SDLogWarn", int32(SDLogWarn), 3},
+		{"SDLogError", int32(SDLogError), 4},
 
 		// preview_t
 		{"PreviewNone", int32(PreviewNone), 0},
@@ -115,7 +123,10 @@ func TestEnumABIValues(t *testing.T) {
 		{"SDTypeMXFP4", int32(SDTypeMXFP4), 39},
 		{"SDTypeNVFP4", int32(SDTypeNVFP4), 40},
 		{"SDTypeQ1_0", int32(SDTypeQ1_0), 41},
-		{"SDTypeCount", int32(SDTypeCount), 42},
+		{"SDTypeQ2_0", int32(SDTypeQ2_0), 42},
+		{"SDTypeF8_E4M3", int32(SDTypeF8_E4M3), 43},
+		{"SDTypeF8_E5M2", int32(SDTypeF8_E5M2), 44},
+		{"SDTypeCount", int32(SDTypeCount), 45},
 
 		// sd_vae_format_t — note AUTO is -1.
 		{"VAEFormatAuto", int32(VAEFormatAuto), -1},

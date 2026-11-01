@@ -1,6 +1,10 @@
 package stable_diffusion
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/pendra-ai/stable-diffusion-go/pkg/sd"
+)
 
 // The master-802 upstream resync removed several dedicated C struct fields and
 // replaced them with free-form spec strings. These tests pin the Go-side
@@ -46,6 +50,31 @@ func TestBuildRefImageArgs(t *testing.T) {
 	for _, c := range cases {
 		if got := buildRefImageArgs(c.autoResize, c.increaseRefIndex, c.extra); got != c.want {
 			t.Errorf("%s: buildRefImageArgs(%v, %v, %q) = %q, want %q", c.name, c.autoResize, c.increaseRefIndex, c.extra, got, c.want)
+		}
+	}
+}
+
+// TestApplyResidencyOptions pins the sense of the master-1031 options: a zero
+// ContextParams must leave prefetch and auto-fit on, as upstream defaults them.
+func TestApplyResidencyOptions(t *testing.T) {
+	cases := []struct {
+		name            string
+		src             ContextParams
+		disablePrefetch bool
+		eagerLoad       bool
+		autoFit         bool
+	}{
+		{"zero value keeps upstream defaults", ContextParams{}, false, false, true},
+		{"prefetch disabled", ContextParams{DisablePrefetch: true}, true, false, true},
+		{"auto-fit disabled", ContextParams{DisableAutoFit: true}, false, false, false},
+		{"eager load", ContextParams{EagerLoad: true}, false, true, true},
+	}
+	for _, c := range cases {
+		var got sd.SDContextParams
+		applyResidencyOptions(&got, &c.src)
+		if got.DisablePrefetch != c.disablePrefetch || got.EagerLoad != c.eagerLoad || got.AutoFit != c.autoFit {
+			t.Errorf("%s: DisablePrefetch=%v EagerLoad=%v AutoFit=%v, want %v %v %v",
+				c.name, got.DisablePrefetch, got.EagerLoad, got.AutoFit, c.disablePrefetch, c.eagerLoad, c.autoFit)
 		}
 	}
 }

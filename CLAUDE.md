@@ -26,14 +26,19 @@ The module path is `github.com/pendra-ai/stable-diffusion-go`.
   - `cfree_unix.go` / `cfree_windows.go` — best-effort libc `free(3)` binding
     (build-tagged) used to release native-allocated buffers.
   - `free.go` — `FreeImage` / `FreeImages` helpers.
+  - `result.go` — `SDImageGenerationResult` / `SDVideoGenerationResult`, the
+    handles that own what generation returns.
   - `stable_diffusion.go` — context, params structs, and method bindings.
-  - `utils.go` — image conversion (`EncodePNG`, `SaveImage`, `toRGBA`), I/O, GPU
+  - `utils.go` — image conversion (`EncodePNG`, `SaveImage`, `toNRGBA`), I/O, GPU
     detection.
 - `examples/txt2img/`, `examples/txt2vid/` — one `package main` per directory.
 - `patches/` — `git format-patch` fixes to upstream carried until they land
   there, applied by `scripts/apply-upstream-patches.sh` after the clone in
   every build leg. `csrc/test/` holds their C++ regression tests, run by
   `scripts/test-upstream-patches.sh` (CI job `upstream-patches` in `test.yml`).
+- `csrc/test/abi_layout.c` — prints the C layout of every mirrored struct and
+  enum into `pkg/sd/testdata/abi_layout.txt`, the file `pkg/sd/abi_test.go` holds
+  the Go mirrors to. `scripts/check-abi-layout.sh` keeps it tied to the pin.
 - `lib/` — version pin and license text only. The actual `.so`/`.dylib`/`.dll`
   are **not** committed; they come from
   `leejet/stable-diffusion.cpp` releases matching `lib/version.txt`.
@@ -47,16 +52,20 @@ The module path is `github.com/pendra-ai/stable-diffusion-go`.
 - **Never panic across the FFI boundary.** A missing/incompatible library, a
   missing symbol, or malformed input must return an `error`, not crash. Convert
   any `purego` panic into an error (see the `recover` in `Load`).
-- **Free native memory.** Buffers returned by the C library (e.g. the image
-  array from `generate_image`) are not GC-managed — free them via
-  `FreeImage`/`FreeImages`. The libc `free` binding is best-effort and degrades
-  to a safe no-op when unavailable, so callers must tolerate that.
+- **Free native memory.** Buffers returned by the C library are not GC-managed.
+  Generation results are freed once through their `Free` method, which is the
+  only safe way: `free_sd_images` must never touch their images. Other buffers
+  go through `FreeImage`/`FreeImages`, whose libc `free` binding is best-effort
+  and degrades to a safe no-op when unavailable, so callers must tolerate that.
 - **Reuse loaded contexts.** A context (`NewStableDiffusion` / `sd.NewContext`)
   loads a multi-GB model; reuse it across generations and free it once via
   `Free`. Do not free per request.
 - **Symbol completeness.** `registerFunctions` binds the full symbol set; the
   native library must export all of them or `Load` fails. Keep the binding and
   `lib/version.txt` in lockstep with the upstream commit they target.
+- **Struct layout is the ABI.** A pin bump re-derives every struct and enum from
+  the header: update `csrc/test/abi_layout.c` for any new field, rerun
+  `scripts/check-abi-layout.sh <upstream> --update`, then make `abi_test.go` pass.
 - **Carry upstream fixes as patches, not a fork.** Fix upstream bugs with a
   minimal patch in `patches/` (numbered, generated with `git format-patch`
   against the pinned commit) plus a regression test in `csrc/test/`, and send
@@ -76,7 +85,8 @@ green. Match the existing style: table/round-trip tests living next to the code
 - Tests must **not require the native shared library** — it isn't present in CI
   or this repo. Cover logic that runs without it (param mapping, image
   conversion, error/no-op paths), and skip or guard anything that needs a loaded
-  lib (see `load_test.go`, `free_test.go`).
+  lib (see `load_test.go`, `free_test.go`). `native_test.go` runs against a real
+  library only when `SD_TEST_LIB_DIR` points at one.
 - Prefer asserting that exported APIs **return errors** for malformed input
   rather than panicking.
 

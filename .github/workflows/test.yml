@@ -70,8 +70,10 @@ jobs:
 
   # The carried upstream patches (patches/*.patch) must still apply to the
   # upstream commit pinned in lib/version.txt, and their C++ regression tests
-  # (csrc/test/) must pass against the patched tree. Cheap: a shallow clone plus
-  # one translation unit, no ggml build and no model files.
+  # (csrc/test/) must pass against the patched tree. The header at that commit
+  # must also still agree with the layouts the Go ABI tests hold the binding to.
+  # Cheap: a shallow clone plus two translation units, no ggml build and no model
+  # files.
   upstream-patches:
     runs-on: ubuntu-latest
     steps:
@@ -79,6 +81,9 @@ jobs:
 
       - name: Clone upstream stable-diffusion.cpp @ pinned commit
         run: scripts/clone-upstream.sh https://github.com/leejet/stable-diffusion.cpp.git "$(tr -d '[:space:]' < lib/version.txt)" upstream
+
+      - name: Check struct and enum layouts against the pinned header
+        run: scripts/check-abi-layout.sh upstream
 
       - name: Apply carried upstream patches
         run: scripts/apply-upstream-patches.sh upstream

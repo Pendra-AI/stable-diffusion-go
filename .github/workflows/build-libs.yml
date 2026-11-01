@@ -302,7 +302,7 @@ jobs:
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           # Version-less name: the release TAG (vX.Y.Z) carries the version, so
           # the download URL is .../releases/download/<tag>/<this fixed name>.
           name="stable-diffusion-libs-linux-${{ matrix.arch }}-${{ matrix.proc }}.tar.gz"
@@ -397,7 +397,7 @@ jobs:
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           name="stable-diffusion-libs-linux-amd64-cuda.tar.gz"
           tar -C "$stage" -czf "$name" .
           echo "Packaged $name"
@@ -502,7 +502,7 @@ jobs:
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           name="stable-diffusion-libs-linux-arm64-cuda.tar.gz"
           tar -C "$stage" -czf "$name" .
           echo "Packaged $name"
@@ -518,7 +518,9 @@ jobs:
   macos:
     needs: setup
     if: ${{ needs.setup.outputs.run_macos == 'true' && needs.setup.outputs.skip != 'true' }}
-    runs-on: macos-14
+    # GitHub retired the macos-14 image on 2026-11-02. The deployment target below
+    # keeps the library loadable on macOS 14 regardless of the runner's own version.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Install build tooling
@@ -543,7 +545,7 @@ jobs:
         working-directory: upstream
         run: |
           set -euo pipefail
-          cmake -S . -B build -G Ninja $SD_BASE_FLAGS -DSD_METAL=ON
+          cmake -S . -B build -G Ninja $SD_BASE_FLAGS -DSD_METAL=ON -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
           cmake --build build --config Release -j
       - name: Locate library
         id: lib
@@ -554,12 +556,20 @@ jobs:
           echo "path=$dylib" >> "$GITHUB_OUTPUT"
       - name: Verify exported symbols (fail-closed)
         run: scripts/check-symbols.sh "${{ steps.lib.outputs.path }}" lib/expected-symbols.txt
+      # The default target is the runner's own macOS, so a runner upgrade would
+      # otherwise raise the minimum OS without anyone choosing to.
+      - name: Verify minimum macOS (fail-closed)
+        run: |
+          set -euo pipefail
+          minos="$(vtool -show-build "${{ steps.lib.outputs.path }}" | awk '$1 == "minos" {print $2}')"
+          echo "minos=$minos"
+          test "$minos" = "14.0" || { echo "expected minos 14.0, got '$minos'" >&2; exit 1; }
       - name: Package archive
         run: |
           set -euo pipefail
           stage="stage"; mkdir -p "$stage"
           cp "${{ steps.lib.outputs.path }}" "$stage/"
-          cp lib/stable-diffusion.cpp.txt lib/ggml.txt "$stage/" 2>/dev/null || true
+          cp lib/stable-diffusion.cpp.txt lib/ggml.txt lib/oniguruma.txt lib/utf8proc.txt "$stage/" 2>/dev/null || true
           name="stable-diffusion-libs-darwin-arm64-metal.tar.gz"
           tar -C "$stage" -czf "$name" .
           echo "Packaged $name"
@@ -662,10 +672,11 @@ jobs:
           bash scripts/apply-upstream-patches.sh upstream
 
       - name: Build variant (${{ matrix.subdir }})
-        # Upstream's single-TU src/stable-diffusion.cpp grew past MSVC's COFF
-        # section limit at master-802-e92e86f (fatal error C1128), so every MSVC
-        # compile needs /bigobj. Set it via the CXXFLAGS/CFLAGS environment
-        # variables — CMake initializes CMAKE_<LANG>_FLAGS as
+        # Upstream's sources outgrew MSVC's COFF section limit at
+        # master-802-e92e86f (fatal error C1128). Upstream has since added
+        # /bigobj to its own library target, but not to ggml or the vendored
+        # targets, so keep it on every MSVC compile. Set it via the CXXFLAGS/
+        # CFLAGS environment variables — CMake initializes CMAKE_<LANG>_FLAGS as
         # "$ENV{<LANG>FLAGS} <platform defaults>", so /bigobj is APPENDED
         # alongside MSVC's defaults (/DWIN32 /D_WINDOWS /EHsc /GR). Passing
         # -DCMAKE_CXX_FLAGS=/bigobj instead would REPLACE those defaults and
@@ -769,7 +780,7 @@ jobs:
       - name: Package archive
         run: |
           $ErrorActionPreference = "Stop"
-          Copy-Item lib/stable-diffusion.cpp.txt,lib/ggml.txt stage/ -ErrorAction SilentlyContinue
+          Copy-Item lib/stable-diffusion.cpp.txt,lib/ggml.txt,lib/oniguruma.txt,lib/utf8proc.txt stage/ -ErrorAction SilentlyContinue
           $name = "stable-diffusion-libs-windows-amd64.tar.gz"
           tar -C stage -czf $name .
           Write-Host "Packaged $name"

@@ -21,10 +21,10 @@ cond_stage_model.*), FLUX and all other versions are unchanged.
  1 file changed, 11 insertions(+)
 
 diff --git a/src/name_conversion.cpp b/src/name_conversion.cpp
-index 63c916e..3f042ac 100644
+index 57a41c5..027ba30 100644
 --- a/src/name_conversion.cpp
 +++ b/src/name_conversion.cpp
-@@ -1457,6 +1457,17 @@ std::string convert_tensor_name(std::string name, SDVersion version) {
+@@ -1733,6 +1733,17 @@ std::string convert_tensor_name(std::string name, SDVersion version) {
  
      replace_with_prefix_map(name, prefix_map);
  
@@ -39,6 +39,6 @@ index 63c916e..3f042ac 100644
 +        replace_with_prefix_map(name, sd3_cond_stage_model_prefix_map);
 +    }
 +
-     if (sd_version_is_boogu_image(version) || sd_version_is_krea2(version) || sd_version_is_mage_flow(version)) {
-         const std::string hf_vision_prefix = "text_encoders.llm.model.visual.";
-         if (starts_with(name, hf_vision_prefix)) {
+     if (version == VERSION_MOSS_IMAGE) {
+         const std::string te_prefix = "text_encoders.llm.";
+         if (starts_with(name, te_prefix + "blk.")) {

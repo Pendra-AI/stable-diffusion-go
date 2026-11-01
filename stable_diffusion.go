@@ -70,6 +70,7 @@ var SampleMethodMap = map[string]sd.SampleMethod{
 	"euler_ge":            sd.EulerGESampleMethod,
 	"dpm++2m_sde":         sd.DPMPP2MSDESampleMethod,
 	"dpm++2m_sde_bt":      sd.DPMPP2MSDEBTSampleMethod,
+	"lms":                 sd.LMSSampleMethod,
 	"sample_method_count": sd.SampleMethodCount,
 }
 
@@ -92,6 +93,7 @@ var SchedulerMap = map[string]sd.Scheduler{
 	"flux2":           sd.Flux2Scheduler,
 	"flux":            sd.FluxScheduler,
 	"beta":            sd.BetaScheduler,
+	"llada_image":     sd.LLaDAImageScheduler,
 	"scheduler_count": sd.SchedulerCount,
 }
 
@@ -100,15 +102,19 @@ var SchedulerMap = map[string]sd.Scheduler{
 // MINIT2I_FLOW_PRED; its canonical name for FLOW_PRED is "sd3_flow" ("flow" is
 // kept as this binding's legacy alias).
 var PredictionMap = map[string]sd.Prediction{
-	"eps":          sd.EPSPred,
-	"v":            sd.VPred,
-	"edm_v":        sd.EDMVPred,
-	"flow":         sd.FlowPred,
-	"sd3_flow":     sd.FlowPred,
-	"flux_flow":    sd.FluxFlowPred,
-	"sefi_flow":    sd.SefiFlowPred,
-	"minit2i_flow": sd.Minit2iFlowPred,
-	"default":      sd.PredictionCount, // Default
+	"eps":               sd.EPSPred,
+	"v":                 sd.VPred,
+	"edm_v":             sd.EDMVPred,
+	"flow":              sd.FlowPred,
+	"sd3_flow":          sd.FlowPred,
+	"flux_flow":         sd.FluxFlowPred,
+	"sefi_flow":         sd.SefiFlowPred,
+	"minit2i_flow":      sd.Minit2iFlowPred,
+	"sensenova_u1_flow": sd.SenseNovaU1FlowPred,
+	"flux3_flow":        sd.Flux3FlowPred,
+	"h3_av_flow":        sd.H3AVFlowPred,
+	"ming_image_flow":   sd.MingImageFlowPred,
+	"default":           sd.PredictionCount, // Default
 }
 
 // SDTypeMap SDType mapping
@@ -154,6 +160,9 @@ var SDTypeMap = map[string]sd.SDType{
 	"mxfp4":   sd.SDTypeMXFP4,
 	"nvfp4":   sd.SDTypeNVFP4,
 	"q1_0":    sd.SDTypeQ1_0,
+	"q2_0":    sd.SDTypeQ2_0,
+	"f8_e4m3": sd.SDTypeF8_E4M3,
+	"f8_e5m2": sd.SDTypeF8_E5M2,
 	"default": sd.SDTypeCount, // Default
 }
 
@@ -206,12 +215,14 @@ type ContextParams struct {
 	T5XXLPath                   string     // T5-XXL text encoder path
 	LLMPath                     string     // LLM text encoder path (e.g., qwenvl2.5 for qwen-image, mistral-small3.2 for flux2)
 	LLMVisionPath               string     // LLM Vision encoder path
+	Tokenizer                   string     // tokenizer.json path, or main=FILE,clip-l=FILE,clip-g=FILE assignments (required for PiD and Lens)
 	DiffusionModelPath          string     // Standalone diffusion model path
 	HighNoiseDiffusionModelPath string     // Standalone high noise diffusion model path
 	UncondDiffusionModelPath    string     // Standalone unconditional diffusion model path
 	EmbeddingsConnectorsPath    string     // Embeddings connectors model path
 	VAEPath                     string     // VAE model path
 	AudioVAEPath                string     // Audio VAE model path (for audio-capable video models)
+	AudioEncoderPath            string     // Audio encoder model path (for video models that take reference audio)
 	TAESDPath                   string     // TAE-SD model path, uses Tiny AutoEncoder for fast decoding (low quality)
 	ControlNetPath              string     // ControlNet model path
 	IPAdapterPath               string     // IP-Adapter model path
@@ -239,13 +250,13 @@ type ContextParams struct {
 	VAEConvDirect               bool       // Use Conv2d direct in VAE model (should improve performance)
 	ForceSDXLVAConvScale        bool       // Force conv scale on SDXL VAE
 	VAEFormat                   string     // VAE weight format override: "auto" (default), "flux", "sd3", "flux2", "wan"
-	MaxVRAM                     string     // GiB budget or backend assignment spec for graph-cut segmented param offload ("" = disabled, "-1" = auto)
-	StreamLayers                bool       // Stream model weights from CPU during generation (residency+prefetch on top of MaxVRAM; no effect unless MaxVRAM is set)
+	MaxVRAM                     string     // Per-device GiB budget for managed weights and runner buffers, or backend assignments like "cuda0=6,vulkan0=4" ("" or "0" = live free VRAM, negative = reserve that much free VRAM)
+	DisablePrefetch             bool       // Disable asynchronous next-segment weight prefetch. Segmented streaming is automatic and prefetch is on by default, so the zero value is what upstream recommends
 	EagerLoad                   bool       // Load all params into the params backend at model-load time instead of lazily on first use
 	Backend                     string     // Compute backend override or assignment spec (empty = library default)
 	ParamsBackend               string     // Params/storage backend override or assignment spec (empty = library default)
 	SplitMode                   string     // Weight distribution for multi-device modules: "layer" (default), "row", or per-module assignments e.g. "diffusion=row"
-	AutoFit                     bool       // Automatically fit the model across available devices
+	DisableAutoFit              bool       // Turn off automatic weight placement across GPU, RAM and disk. It is on by default upstream, and a non-empty params backend also disables it
 	RPCServers                  string     // Comma-separated list of RPC servers (host:port) for offloading
 	ModelArgs                   string     // Extra model args, key=value list (supports chroma_use_dit_mask, chroma_use_t5_mask, chroma_t5_mask_pad, qwen_image_zero_cond_t)
 }
@@ -257,6 +268,15 @@ func prependBackendAssignment(spec string, assignment string) string {
 		return assignment
 	}
 	return assignment + "," + spec
+}
+
+// applyResidencyOptions maps the weight-placement options. Both DisablePrefetch
+// and DisableAutoFit are phrased so that the Go zero value keeps upstream's
+// default: prefetch on, auto-fit on.
+func applyResidencyOptions(dst *sd.SDContextParams, src *ContextParams) {
+	dst.DisablePrefetch = src.DisablePrefetch
+	dst.EagerLoad = src.EagerLoad
+	dst.AutoFit = !src.DisableAutoFit
 }
 
 // buildRefImageArgs translates the AutoResizeRefImage / IncreaseRefIndex
@@ -401,6 +421,7 @@ type VidGenParams struct {
 	Strength     float32          // Noise/denoise strength (range [0.0, 1.0])
 	Seed         int64            // RNG seed (< 0 for random seed)
 	VideoFrames  int32            // Number of video frames to generate
+	Fps          int32            // Frames per second of the generated video (0 = library default, 16)
 	VaceStrength float32          // Wan VACE strength
 	CacheParams  sd.SDCacheParams // Cache parameters for DiT models
 	CircularX    bool             // Enable circular padding on X axis (moved here from ContextParams by the master-802 upstream resync)
@@ -454,6 +475,10 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 		sdCtxParams.LLMVisionPath = sd.CString(ctxParams.LLMVisionPath)
 	}
 
+	if ctxParams.Tokenizer != "" {
+		sdCtxParams.Tokenizer = sd.CString(ctxParams.Tokenizer)
+	}
+
 	if ctxParams.DiffusionModelPath != "" {
 		sdCtxParams.DiffusionModelPath = sd.CString(ctxParams.DiffusionModelPath)
 	}
@@ -476,6 +501,10 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 
 	if ctxParams.AudioVAEPath != "" {
 		sdCtxParams.AudioVAEPath = sd.CString(ctxParams.AudioVAEPath)
+	}
+
+	if ctxParams.AudioEncoderPath != "" {
+		sdCtxParams.AudioEncoderPath = sd.CString(ctxParams.AudioEncoderPath)
 	}
 
 	if ctxParams.TAESDPath != "" {
@@ -580,8 +609,7 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 	if ctxParams.MaxVRAM != "" {
 		sdCtxParams.MaxVRAM = sd.CString(ctxParams.MaxVRAM)
 	}
-	sdCtxParams.StreamLayers = ctxParams.StreamLayers
-	sdCtxParams.EagerLoad = ctxParams.EagerLoad
+	applyResidencyOptions(&sdCtxParams, ctxParams)
 
 	// The CPU-placement booleans of the previous upstream pin
 	// (offload_params_to_cpu / keep_clip_on_cpu / keep_vae_on_cpu /
@@ -613,7 +641,6 @@ func NewStableDiffusion(ctxParams *ContextParams) (*StableDiffusion, error) {
 	if ctxParams.SplitMode != "" {
 		sdCtxParams.SplitMode = sd.CString(ctxParams.SplitMode)
 	}
-	sdCtxParams.AutoFit = ctxParams.AutoFit
 	if ctxParams.RPCServers != "" {
 		sdCtxParams.RPCServers = sd.CString(ctxParams.RPCServers)
 	}
@@ -828,11 +855,11 @@ func (sDiffusion *StableDiffusion) GenerateImage(imgGenParams *ImgGenParams, new
 	} else {
 		sdImgGenParams.VAETilingParams = sd.SDTilingParams{
 			Enabled:       false,
-			TileSizeX:     0,
-			TileSizeY:     0,
+			TileSizeW:     0,
+			TileSizeH:     0,
 			TargetOverlap: 0.5,
-			RelSizeX:      0,
-			RelSizeY:      0,
+			RelSizeW:      0,
+			RelSizeH:      0,
 		}
 	}
 
@@ -895,13 +922,17 @@ func (sDiffusion *StableDiffusion) GenerateImage(imgGenParams *ImgGenParams, new
 	// Generate image. The context is intentionally NOT freed here: the model is
 	// loaded once in NewStableDiffusion and reused across many GenerateImage
 	// calls. Teardown is the caller's responsibility via (*StableDiffusion).Free.
-	img, numImages := sDiffusion.ctx.GenerateImage(&sdImgGenParams)
-	if img == nil || numImages == 0 {
+	result := sDiffusion.ctx.GenerateImage(&sdImgGenParams)
+	if result == nil {
 		return errors.New("failed to generate image")
 	}
-	// generate_image yields a malloc'd array of numImages images, each with a
-	// malloc'd pixel buffer; free it once we're done with it to avoid a leak.
-	defer sd.FreeImages(img, numImages)
+	// The result owns the pixels, so it must outlive the save below.
+	defer result.Free()
+
+	img := result.Image(0)
+	if img == nil {
+		return errors.New("failed to generate image: result has no pixels")
+	}
 
 	fmt.Println("\nImage generated successfully!")
 	fmt.Printf("Image dimensions: %dx%d\n", img.Width, img.Height)
@@ -917,6 +948,9 @@ func (sDiffusion *StableDiffusion) GenerateImage(imgGenParams *ImgGenParams, new
 	return nil
 
 }
+
+// defaultVideoFps is used when a video result does not report a frame rate.
+const defaultVideoFps = 30
 
 // GenerateVideo generates video
 func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, newVideoPath string) error {
@@ -1109,7 +1143,7 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 	if vidGenParams.HighNoiseScheduler == "" || vidGenParams.HighNoiseScheduler == "default" {
 		defaultHighNoiseScheduler = sDiffusion.ctx.GetDefaultScheduler(defaultHighNoiseSampleMethod)
 	} else {
-		if scheduler, ok := SchedulerMap[vidGenParams.Scheduler]; ok {
+		if scheduler, ok := SchedulerMap[vidGenParams.HighNoiseScheduler]; ok {
 			defaultHighNoiseScheduler = scheduler
 		} else {
 			return fmt.Errorf("Invalid Scheduler: %s", vidGenParams.HighNoiseScheduler)
@@ -1174,6 +1208,10 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 	}
 	sdVidGenParams.VideoFrames = vidGenParams.VideoFrames
 
+	if vidGenParams.Fps != 0 {
+		sdVidGenParams.Fps = vidGenParams.Fps
+	}
+
 	if vidGenParams.VaceStrength == 0 {
 		vidGenParams.VaceStrength = 1
 	}
@@ -1199,20 +1237,23 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 		sdVidGenParams.Cache.EndPercent = 0.95
 	}
 
-	// Generate video
-	frames, numFrames := sDiffusion.ctx.GenerateVideo(&sdVidGenParams)
-	if frames == nil || numFrames == 0 {
+	// Generate video. As in GenerateImage, the context stays loaded for reuse and
+	// is released by (*StableDiffusion).Free; the result owns the frames.
+	result := sDiffusion.ctx.GenerateVideo(&sdVidGenParams)
+	if result == nil {
 		return errors.New("failed to generate video")
 	}
-	defer func() {
-		sDiffusion.ctx.Free()
-	}()
+	defer result.Free()
 
 	// Save video frames
-	if err := sd.SaveFrames(frames, tmpDir); err != nil {
+	if err := sd.SaveFrames(result.Frames(), tmpDir); err != nil {
 		return errors.New("failed to save video")
 	}
-	if err := sd.EncodeVideo(tmpDir, newVideoPath, 30); err != nil {
+	fps := result.Fps()
+	if fps <= 0 {
+		fps = defaultVideoFps
+	}
+	if err := sd.EncodeVideo(tmpDir, newVideoPath, fps); err != nil {
 		return errors.New("failed to encode video")
 	}
 	if err := sd.CleanupTempDir(tmpDir); err != nil {
@@ -1273,16 +1314,20 @@ func (us *Upscaler) Upscale(inputImagePath string, upscaleFactor uint32, outputI
 
 	defer us.ctx.Free()
 
-	outputImages, numImages := us.ctx.Upscale(inputSDImage, upscaleFactor)
-	if outputImages == nil || numImages == 0 {
+	result := us.ctx.Upscale(inputSDImage, upscaleFactor)
+	if result == nil {
 		return errors.New("failed to upscale image")
 	}
-	defer sd.FreeImages(outputImages, numImages)
-	fmt.Printf("outputSDImage: %+v", *outputImages)
+	defer result.Free()
+
+	outputImage := result.Image(0)
+	if outputImage == nil {
+		return errors.New("failed to upscale image: result has no pixels")
+	}
+	fmt.Printf("outputSDImage: %+v", *outputImage)
 
 	// Save image
-	err := sd.SaveImage(outputImages, outputImagePath)
-	if err != nil {
+	if err := sd.SaveImage(outputImage, outputImagePath); err != nil {
 		return fmt.Errorf("failed to save image: %v", err)
 	}
 

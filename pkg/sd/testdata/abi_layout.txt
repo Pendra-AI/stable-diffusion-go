@@ -1,0 +1,369 @@
+struct sd_tiling_params_t 32
+field sd_tiling_params_t enabled 0 1 bool
+field sd_tiling_params_t temporal_tiling 1 1 bool
+field sd_tiling_params_t tile_size_w 4 4 int32
+field sd_tiling_params_t tile_size_h 8 4 int32
+field sd_tiling_params_t target_overlap 12 4 float32
+field sd_tiling_params_t rel_size_w 16 4 float32
+field sd_tiling_params_t rel_size_h 20 4 float32
+field sd_tiling_params_t extra_tiling_args 24 8 other
+struct sd_embedding_t 16
+field sd_embedding_t name 0 8 other
+field sd_embedding_t path 8 8 other
+struct sd_ctx_params_t 336
+field sd_ctx_params_t model_path 0 8 other
+field sd_ctx_params_t clip_l_path 8 8 other
+field sd_ctx_params_t clip_g_path 16 8 other
+field sd_ctx_params_t clip_vision_path 24 8 other
+field sd_ctx_params_t t5xxl_path 32 8 other
+field sd_ctx_params_t llm_path 40 8 other
+field sd_ctx_params_t llm_vision_path 48 8 other
+field sd_ctx_params_t diffusion_model_path 56 8 other
+field sd_ctx_params_t high_noise_diffusion_model_path 64 8 other
+field sd_ctx_params_t uncond_diffusion_model_path 72 8 other
+field sd_ctx_params_t embeddings_connectors_path 80 8 other
+field sd_ctx_params_t vae_path 88 8 other
+field sd_ctx_params_t audio_vae_path 96 8 other
+field sd_ctx_params_t audio_encoder_path 104 8 other
+field sd_ctx_params_t taesd_path 112 8 other
+field sd_ctx_params_t control_net_path 120 8 other
+field sd_ctx_params_t ip_adapter_path 128 8 other
+field sd_ctx_params_t motion_module_path 136 8 other
+field sd_ctx_params_t embeddings 144 8 other
+field sd_ctx_params_t embedding_count 152 4 int32
+field sd_ctx_params_t photo_maker_path 160 8 other
+field sd_ctx_params_t pulid_weights_path 168 8 other
+field sd_ctx_params_t tensor_type_rules 176 8 other
+field sd_ctx_params_t n_threads 184 4 int32
+field sd_ctx_params_t wtype 188 4 int32
+field sd_ctx_params_t rng_type 192 4 int32
+field sd_ctx_params_t sampler_rng_type 196 4 int32
+field sd_ctx_params_t prediction 200 4 int32
+field sd_ctx_params_t lora_apply_mode 204 4 int32
+field sd_ctx_params_t enable_mmap 208 1 bool
+field sd_ctx_params_t flash_attn 209 1 bool
+field sd_ctx_params_t diffusion_flash_attn 210 1 bool
+field sd_ctx_params_t tae_preview_only 211 1 bool
+field sd_ctx_params_t diffusion_conv_direct 212 1 bool
+field sd_ctx_params_t vae_conv_direct 213 1 bool
+field sd_ctx_params_t force_sdxl_vae_conv_scale 214 1 bool
+field sd_ctx_params_t vae_format 216 4 int32
+field sd_ctx_params_t max_vram 224 8 other
+field sd_ctx_params_t disable_prefetch 232 1 bool
+field sd_ctx_params_t eager_load 233 1 bool
+field sd_ctx_params_t backend 240 8 other
+field sd_ctx_params_t params_backend 248 8 other
+field sd_ctx_params_t split_mode 256 8 other
+field sd_ctx_params_t auto_fit 264 1 bool
+field sd_ctx_params_t rpc_servers 272 8 other
+field sd_ctx_params_t model_args 280 8 other
+field sd_ctx_params_t disable_segmented_compute 288 1 bool
+field sd_ctx_params_t batched_cfg 289 1 bool
+field sd_ctx_params_t linear_scale 292 4 float32
+field sd_ctx_params_t attn_scale 296 4 float32
+field sd_ctx_params_t tokenizer 304 8 other
+field sd_ctx_params_t sage_attn 312 1 bool
+field sd_ctx_params_t conditioning_cache_size 316 4 int32
+field sd_ctx_params_t flash_attn_mode 320 8 other
+field sd_ctx_params_t conv_direct_mode 328 8 other
+struct sd_audio_t 24
+field sd_audio_t sample_rate 0 4 int32
+field sd_audio_t channels 4 4 int32
+field sd_audio_t sample_count 8 8 int64
+field sd_audio_t data 16 8 other
+struct sd_image_t 24
+field sd_image_t width 0 4 int32
+field sd_image_t height 4 4 int32
+field sd_image_t channel 8 4 int32
+field sd_image_t data 16 8 other
+struct sd_image_result_t 32
+field sd_image_result_t image 0 24 other
+field sd_image_result_t generation_info 24 8 other
+struct sd_image_generation_result_t 16
+field sd_image_generation_result_t items 0 8 other
+field sd_image_generation_result_t count 8 4 int32
+struct sd_video_generation_result_t 40
+field sd_video_generation_result_t frames 0 8 other
+field sd_video_generation_result_t frame_count 8 4 int32
+field sd_video_generation_result_t audio 16 8 other
+field sd_video_generation_result_t fps 24 4 int32
+field sd_video_generation_result_t generation_info 32 8 other
+struct sd_image_preprocess_params_t 8
+field sd_image_preprocess_params_t rules 0 8 other
+struct sd_ref_video_t 40
+field sd_ref_video_t frames 0 8 other
+field sd_ref_video_t frame_count 8 4 int32
+field sd_ref_video_t fps 12 4 int32
+field sd_ref_video_t audio 16 24 other
+struct sd_slg_params_t 32
+field sd_slg_params_t layers 0 8 other
+field sd_slg_params_t layer_count 8 8 int64
+field sd_slg_params_t layer_start 16 4 float32
+field sd_slg_params_t layer_end 20 4 float32
+field sd_slg_params_t scale 24 4 float32
+struct sd_guidance_params_t 48
+field sd_guidance_params_t txt_cfg 0 4 float32
+field sd_guidance_params_t img_cfg 4 4 float32
+field sd_guidance_params_t distilled_guidance 8 4 float32
+field sd_guidance_params_t slg 16 32 other
+struct sd_sample_params_t 96
+field sd_sample_params_t guidance 0 48 other
+field sd_sample_params_t scheduler 48 4 int32
+field sd_sample_params_t sample_method 52 4 int32
+field sd_sample_params_t sample_steps 56 4 int32
+field sd_sample_params_t eta 60 4 float32
+field sd_sample_params_t shifted_timestep 64 4 int32
+field sd_sample_params_t custom_sigmas 72 8 other
+field sd_sample_params_t custom_sigmas_count 80 4 int32
+field sd_sample_params_t flow_shift 84 4 float32
+field sd_sample_params_t extra_sample_args 88 8 other
+struct sd_pm_params_t 32
+field sd_pm_params_t id_images 0 8 other
+field sd_pm_params_t id_images_count 8 4 int32
+field sd_pm_params_t id_embed_path 16 8 other
+field sd_pm_params_t style_strength 24 4 float32
+struct sd_pulid_params_t 16
+field sd_pulid_params_t id_embedding_path 0 8 other
+field sd_pulid_params_t id_weight 8 4 float32
+struct sd_cache_params_t 96
+field sd_cache_params_t mode 0 4 int32
+field sd_cache_params_t reuse_threshold 4 4 float32
+field sd_cache_params_t start_percent 8 4 float32
+field sd_cache_params_t end_percent 12 4 float32
+field sd_cache_params_t error_decay_rate 16 4 float32
+field sd_cache_params_t use_relative_threshold 20 1 bool
+field sd_cache_params_t reset_error_on_compute 21 1 bool
+field sd_cache_params_t Fn_compute_blocks 24 4 int32
+field sd_cache_params_t Bn_compute_blocks 28 4 int32
+field sd_cache_params_t residual_diff_threshold 32 4 float32
+field sd_cache_params_t max_warmup_steps 36 4 int32
+field sd_cache_params_t max_cached_steps 40 4 int32
+field sd_cache_params_t max_continuous_cached_steps 44 4 int32
+field sd_cache_params_t taylorseer_n_derivatives 48 4 int32
+field sd_cache_params_t taylorseer_skip_interval 52 4 int32
+field sd_cache_params_t scm_mask 56 8 other
+field sd_cache_params_t scm_policy_dynamic 64 1 bool
+field sd_cache_params_t spectrum_w 68 4 float32
+field sd_cache_params_t spectrum_m 72 4 int32
+field sd_cache_params_t spectrum_lam 76 4 float32
+field sd_cache_params_t spectrum_window_size 80 4 int32
+field sd_cache_params_t spectrum_flex_window 84 4 float32
+field sd_cache_params_t spectrum_warmup_steps 88 4 int32
+field sd_cache_params_t spectrum_stop_percent 92 4 float32
+struct sd_lora_t 16
+field sd_lora_t is_high_noise 0 1 bool
+field sd_lora_t multiplier 4 4 float32
+field sd_lora_t path 8 8 other
+struct sd_hires_params_t 56
+field sd_hires_params_t enabled 0 1 bool
+field sd_hires_params_t upscaler 4 4 int32
+field sd_hires_params_t model_path 8 8 other
+field sd_hires_params_t scale 16 4 float32
+field sd_hires_params_t target_width 20 4 int32
+field sd_hires_params_t target_height 24 4 int32
+field sd_hires_params_t steps 28 4 int32
+field sd_hires_params_t denoising_strength 32 4 float32
+field sd_hires_params_t upscale_tile_size 36 4 int32
+field sd_hires_params_t custom_sigmas 40 8 other
+field sd_hires_params_t custom_sigmas_count 48 4 int32
+struct sd_img_gen_params_t 552
+field sd_img_gen_params_t loras 0 8 other
+field sd_img_gen_params_t lora_count 8 4 int32
+field sd_img_gen_params_t prompt 16 8 other
+field sd_img_gen_params_t negative_prompt 24 8 other
+field sd_img_gen_params_t clip_skip 32 4 int32
+field sd_img_gen_params_t init_image 40 24 other
+field sd_img_gen_params_t ref_images 64 8 other
+field sd_img_gen_params_t ref_images_count 72 4 int32
+field sd_img_gen_params_t ref_image_args 80 8 other
+field sd_img_gen_params_t mask_image 88 24 other
+field sd_img_gen_params_t width 112 4 int32
+field sd_img_gen_params_t height 116 4 int32
+field sd_img_gen_params_t sample_params 120 96 other
+field sd_img_gen_params_t strength 216 4 float32
+field sd_img_gen_params_t seed 224 8 int64
+field sd_img_gen_params_t batch_count 232 4 int32
+field sd_img_gen_params_t control_image 240 24 other
+field sd_img_gen_params_t control_strength 264 4 float32
+field sd_img_gen_params_t ip_adapter_image 272 24 other
+field sd_img_gen_params_t ip_adapter_strength 296 4 float32
+field sd_img_gen_params_t pm_params 304 32 other
+field sd_img_gen_params_t pulid_params 336 16 other
+field sd_img_gen_params_t vae_tiling_params 352 32 other
+field sd_img_gen_params_t cache 384 96 other
+field sd_img_gen_params_t hires 480 56 other
+field sd_img_gen_params_t qwen_image_layers 536 4 int32
+field sd_img_gen_params_t circular_x 540 1 bool
+field sd_img_gen_params_t circular_y 541 1 bool
+field sd_img_gen_params_t image_preprocess 544 8 other
+struct sd_vid_gen_params_t 592
+field sd_vid_gen_params_t loras 0 8 other
+field sd_vid_gen_params_t lora_count 8 4 int32
+field sd_vid_gen_params_t prompt 16 8 other
+field sd_vid_gen_params_t negative_prompt 24 8 other
+field sd_vid_gen_params_t clip_skip 32 4 int32
+field sd_vid_gen_params_t init_image 40 24 other
+field sd_vid_gen_params_t end_image 64 24 other
+field sd_vid_gen_params_t ref_images 88 8 other
+field sd_vid_gen_params_t ref_images_count 96 4 int32
+field sd_vid_gen_params_t ref_videos 104 8 other
+field sd_vid_gen_params_t ref_videos_count 112 4 int32
+field sd_vid_gen_params_t ref_audios 120 8 other
+field sd_vid_gen_params_t ref_audios_count 128 4 int32
+field sd_vid_gen_params_t control_frames 136 8 other
+field sd_vid_gen_params_t control_frames_size 144 4 int32
+field sd_vid_gen_params_t width 148 4 int32
+field sd_vid_gen_params_t height 152 4 int32
+field sd_vid_gen_params_t sample_params 160 96 other
+field sd_vid_gen_params_t high_noise_sample_params 256 96 other
+field sd_vid_gen_params_t moe_boundary 352 4 float32
+field sd_vid_gen_params_t strength 356 4 float32
+field sd_vid_gen_params_t seed 360 8 int64
+field sd_vid_gen_params_t video_frames 368 4 int32
+field sd_vid_gen_params_t fps 372 4 int32
+field sd_vid_gen_params_t vace_strength 376 4 float32
+field sd_vid_gen_params_t vae_tiling_params 384 32 other
+field sd_vid_gen_params_t cache 416 96 other
+field sd_vid_gen_params_t hires 512 56 other
+field sd_vid_gen_params_t circular_x 568 1 bool
+field sd_vid_gen_params_t circular_y 569 1 bool
+field sd_vid_gen_params_t image_preprocess 576 8 other
+field sd_vid_gen_params_t ref_image_args 584 8 other
+struct sd_preview_info_t 8
+field sd_preview_info_t sample_pass 0 4 int32
+field sd_preview_info_t total_steps 4 4 int32
+enum rng_type_t STD_DEFAULT_RNG 0
+enum rng_type_t CUDA_RNG 1
+enum rng_type_t CPU_RNG 2
+enum rng_type_t RNG_TYPE_COUNT 3
+enum sample_method_t EULER_SAMPLE_METHOD 0
+enum sample_method_t EULER_A_SAMPLE_METHOD 1
+enum sample_method_t HEUN_SAMPLE_METHOD 2
+enum sample_method_t DPM2_SAMPLE_METHOD 3
+enum sample_method_t DPMPP2S_A_SAMPLE_METHOD 4
+enum sample_method_t DPMPP2M_SAMPLE_METHOD 5
+enum sample_method_t DPMPP2Mv2_SAMPLE_METHOD 6
+enum sample_method_t IPNDM_SAMPLE_METHOD 7
+enum sample_method_t IPNDM_V_SAMPLE_METHOD 8
+enum sample_method_t LCM_SAMPLE_METHOD 9
+enum sample_method_t DDIM_TRAILING_SAMPLE_METHOD 10
+enum sample_method_t TCD_SAMPLE_METHOD 11
+enum sample_method_t RES_MULTISTEP_SAMPLE_METHOD 12
+enum sample_method_t RES_2S_SAMPLE_METHOD 13
+enum sample_method_t ER_SDE_SAMPLE_METHOD 14
+enum sample_method_t EULER_CFG_PP_SAMPLE_METHOD 15
+enum sample_method_t EULER_A_CFG_PP_SAMPLE_METHOD 16
+enum sample_method_t EULER_GE_SAMPLE_METHOD 17
+enum sample_method_t DPMPP2M_SDE_SAMPLE_METHOD 18
+enum sample_method_t DPMPP2M_SDE_BT_SAMPLE_METHOD 19
+enum sample_method_t LMS_SAMPLE_METHOD 20
+enum sample_method_t SAMPLE_METHOD_COUNT 21
+enum scheduler_t DISCRETE_SCHEDULER 0
+enum scheduler_t KARRAS_SCHEDULER 1
+enum scheduler_t EXPONENTIAL_SCHEDULER 2
+enum scheduler_t AYS_SCHEDULER 3
+enum scheduler_t GITS_SCHEDULER 4
+enum scheduler_t SGM_UNIFORM_SCHEDULER 5
+enum scheduler_t SIMPLE_SCHEDULER 6
+enum scheduler_t SMOOTHSTEP_SCHEDULER 7
+enum scheduler_t KL_OPTIMAL_SCHEDULER 8
+enum scheduler_t LCM_SCHEDULER 9
+enum scheduler_t BONG_TANGENT_SCHEDULER 10
+enum scheduler_t LTX2_SCHEDULER 11
+enum scheduler_t LOGIT_NORMAL_SCHEDULER 12
+enum scheduler_t FLUX2_SCHEDULER 13
+enum scheduler_t FLUX_SCHEDULER 14
+enum scheduler_t BETA_SCHEDULER 15
+enum scheduler_t LLADA_IMAGE_SCHEDULER 16
+enum scheduler_t SCHEDULER_COUNT 17
+enum prediction_t EPS_PRED 0
+enum prediction_t V_PRED 1
+enum prediction_t EDM_V_PRED 2
+enum prediction_t FLOW_PRED 3
+enum prediction_t FLUX_FLOW_PRED 4
+enum prediction_t SEFI_FLOW_PRED 5
+enum prediction_t MINIT2I_FLOW_PRED 6
+enum prediction_t SENSENOVA_U1_FLOW_PRED 7
+enum prediction_t FLUX3_FLOW_PRED 8
+enum prediction_t H3_AV_FLOW_PRED 9
+enum prediction_t MING_IMAGE_FLOW_PRED 10
+enum prediction_t PREDICTION_COUNT 11
+enum sd_type_t SD_TYPE_F32 0
+enum sd_type_t SD_TYPE_F16 1
+enum sd_type_t SD_TYPE_Q4_0 2
+enum sd_type_t SD_TYPE_Q4_1 3
+enum sd_type_t SD_TYPE_Q5_0 6
+enum sd_type_t SD_TYPE_Q5_1 7
+enum sd_type_t SD_TYPE_Q8_0 8
+enum sd_type_t SD_TYPE_Q8_1 9
+enum sd_type_t SD_TYPE_Q2_K 10
+enum sd_type_t SD_TYPE_Q3_K 11
+enum sd_type_t SD_TYPE_Q4_K 12
+enum sd_type_t SD_TYPE_Q5_K 13
+enum sd_type_t SD_TYPE_Q6_K 14
+enum sd_type_t SD_TYPE_Q8_K 15
+enum sd_type_t SD_TYPE_IQ2_XXS 16
+enum sd_type_t SD_TYPE_IQ2_XS 17
+enum sd_type_t SD_TYPE_IQ3_XXS 18
+enum sd_type_t SD_TYPE_IQ1_S 19
+enum sd_type_t SD_TYPE_IQ4_NL 20
+enum sd_type_t SD_TYPE_IQ3_S 21
+enum sd_type_t SD_TYPE_IQ2_S 22
+enum sd_type_t SD_TYPE_IQ4_XS 23
+enum sd_type_t SD_TYPE_I8 24
+enum sd_type_t SD_TYPE_I16 25
+enum sd_type_t SD_TYPE_I32 26
+enum sd_type_t SD_TYPE_I64 27
+enum sd_type_t SD_TYPE_F64 28
+enum sd_type_t SD_TYPE_IQ1_M 29
+enum sd_type_t SD_TYPE_BF16 30
+enum sd_type_t SD_TYPE_TQ1_0 34
+enum sd_type_t SD_TYPE_TQ2_0 35
+enum sd_type_t SD_TYPE_MXFP4 39
+enum sd_type_t SD_TYPE_NVFP4 40
+enum sd_type_t SD_TYPE_Q1_0 41
+enum sd_type_t SD_TYPE_Q2_0 42
+enum sd_type_t SD_TYPE_F8_E4M3 43
+enum sd_type_t SD_TYPE_F8_E5M2 44
+enum sd_type_t SD_TYPE_COUNT 45
+enum sd_log_level_t SD_LOG_DEBUG 0
+enum sd_log_level_t SD_LOG_VERBOSE 1
+enum sd_log_level_t SD_LOG_INFO 2
+enum sd_log_level_t SD_LOG_WARN 3
+enum sd_log_level_t SD_LOG_ERROR 4
+enum preview_t PREVIEW_NONE 0
+enum preview_t PREVIEW_PROJ 1
+enum preview_t PREVIEW_TAE 2
+enum preview_t PREVIEW_VAE 3
+enum preview_t PREVIEW_COUNT 4
+enum lora_apply_mode_t LORA_APPLY_AUTO 0
+enum lora_apply_mode_t LORA_APPLY_IMMEDIATELY 1
+enum lora_apply_mode_t LORA_APPLY_AT_RUNTIME 2
+enum lora_apply_mode_t LORA_APPLY_MODE_COUNT 3
+enum sd_vae_format_t SD_VAE_FORMAT_AUTO -1
+enum sd_vae_format_t SD_VAE_FORMAT_FLUX 0
+enum sd_vae_format_t SD_VAE_FORMAT_SD3 1
+enum sd_vae_format_t SD_VAE_FORMAT_FLUX2 2
+enum sd_vae_format_t SD_VAE_FORMAT_WAN 3
+enum sd_vae_format_t SD_VAE_FORMAT_COUNT 4
+enum sd_cache_mode_t SD_CACHE_DISABLED 0
+enum sd_cache_mode_t SD_CACHE_EASYCACHE 1
+enum sd_cache_mode_t SD_CACHE_UCACHE 2
+enum sd_cache_mode_t SD_CACHE_DBCACHE 3
+enum sd_cache_mode_t SD_CACHE_TAYLORSEER 4
+enum sd_cache_mode_t SD_CACHE_CACHE_DIT 5
+enum sd_cache_mode_t SD_CACHE_SPECTRUM 6
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_NONE 0
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_LATENT 1
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_LATENT_NEAREST 2
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_LATENT_NEAREST_EXACT 3
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_LATENT_ANTIALIASED 4
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_LATENT_BICUBIC 5
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_LATENT_BICUBIC_ANTIALIASED 6
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_LANCZOS 7
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_NEAREST 8
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_MODEL 9
+enum sd_hires_upscaler_t SD_HIRES_UPSCALER_COUNT 10
+enum sd_cancel_mode_t SD_CANCEL_ALL 0
+enum sd_cancel_mode_t SD_CANCEL_NEW_LATENTS 1
+enum sd_cancel_mode_t SD_CANCEL_RESET 2

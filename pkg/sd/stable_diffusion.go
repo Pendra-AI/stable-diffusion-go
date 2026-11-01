@@ -3,6 +3,8 @@ package sd
 import (
 	"runtime"
 	"unsafe"
+
+	"github.com/ebitengine/purego"
 )
 
 // Define enum types
@@ -39,6 +41,7 @@ const (
 	EulerGESampleMethod
 	DPMPP2MSDESampleMethod
 	DPMPP2MSDEBTSampleMethod
+	LMSSampleMethod
 	SampleMethodCount
 )
 
@@ -61,6 +64,7 @@ const (
 	Flux2Scheduler
 	FluxScheduler
 	BetaScheduler
+	LLaDAImageScheduler
 	SchedulerCount
 )
 
@@ -77,6 +81,10 @@ const (
 	// (same integer value, 5) and appended MINIT2I_FLOW_PRED.
 	SefiFlowPred
 	Minit2iFlowPred
+	SenseNovaU1FlowPred
+	Flux3FlowPred
+	H3AVFlowPred
+	MingImageFlowPred
 	PredictionCount
 )
 
@@ -122,16 +130,23 @@ const (
 	// SDTypeIQ4_NL_4_4 = 36,
 	// SDTypeIQ4_NL_4_8 = 37,
 	// SDTypeIQ4_NL_8_8 = 38,
-	SDTypeMXFP4 = 39
-	SDTypeNVFP4 = 40 // NVFP4 (4 blocks, E4M3 scale)
-	SDTypeQ1_0  = 41
-	SDTypeCount = 42
+	SDTypeMXFP4   = 39
+	SDTypeNVFP4   = 40 // NVFP4 (4 blocks, E4M3 scale)
+	SDTypeQ1_0    = 41
+	SDTypeQ2_0    = 42
+	SDTypeF8_E4M3 = 43
+	SDTypeF8_E5M2 = 44
+	SDTypeCount   = 45
 )
 
+// SDLogLevel mirrors enum sd_log_level_t. Compare levels through these constants
+// only: SD_LOG_VERBOSE took slot 1 at the master-1031 resync, which moved
+// INFO/WARN/ERROR from 1/2/3 to 2/3/4.
 type SDLogLevel int32
 
 const (
 	SDLogDebug SDLogLevel = iota
+	SDLogVerbose
 	SDLogInfo
 	SDLogWarn
 	SDLogError
@@ -211,14 +226,21 @@ const (
 )
 
 // Define structs
+
+// SDTilingParams mirrors sd_tiling_params_t. The master-1031 resync renamed the
+// X/Y fields to W/H without changing the layout.
 type SDTilingParams struct {
-	Enabled         bool
-	TemporalTiling  bool
-	TileSizeX       int32
-	TileSizeY       int32
-	TargetOverlap   float32
-	RelSizeX        float32
-	RelSizeY        float32
+	Enabled        bool
+	TemporalTiling bool
+	// TileSizeW and TileSizeH are the spatial tile dimensions in image pixels,
+	// for both encode and decode; 0 uses 256.
+	TileSizeW     int32
+	TileSizeH     int32
+	TargetOverlap float32
+	// RelSizeW and RelSizeH override the tile size when positive: <= 1 is a
+	// fraction of the dimension, > 1 a target tile count.
+	RelSizeW        float32
+	RelSizeH        float32
 	ExtraTilingArgs *uint8
 }
 
@@ -227,20 +249,19 @@ type SDEmbedding struct {
 	Path *uint8
 }
 
-// SDContextParams mirrors sd_ctx_params_t at upstream master-802-e92e86f.
+// SDContextParams mirrors sd_ctx_params_t at upstream master-1031-c6dfa9d.
 // Field order, types and implicit padding MUST match the C struct exactly —
-// this layout is what crosses the FFI boundary. Notable drift from the
-// previous pin (master-685-19bdfe2):
-//   - added: IPAdapterPath, MotionModulePath (after ControlNetPath),
-//     PulidWeightsPath (after PhotoMakerPath), EagerLoad, SplitMode, AutoFit,
-//     RPCServers, ModelArgs
-//   - removed: VAEDecodeOnly, FreeParamsImmediately, OffloadParamsToCPU,
-//     KeepClipOnCPU, KeepControlNetOnCPU, KeepVAEOnCPU, CircularX, CircularY
-//     (the latter two moved into the img/vid gen params), ChromaUseDitMask,
-//     ChromaUseT5Mask, ChromaT5MaskPad, QwenImageZeroCondT (chroma/qwen knobs
-//     moved into the free-form ModelArgs key=value list)
-//   - changed: MaxVRAM is now a C string (GiB budget or backend assignment
-//     spec), no longer a float
+// this layout is what crosses the FFI boundary, and TestStructLayoutMatchesHeader
+// pins it. Notable drift from the previous pin (master-802-e92e86f):
+//   - added: AudioEncoderPath (after AudioVAEPath); DisableSegmentedCompute,
+//     BatchedCFG, LinearScale, AttnScale, Tokenizer, SageAttn,
+//     ConditioningCacheSize, FlashAttnMode, ConvDirectMode (after ModelArgs)
+//   - replaced: StreamLayers became DisablePrefetch in the same slot, with the
+//     opposite sense. Segmented streaming is automatic now and prefetch is on
+//     unless disabled, so there is nothing left to opt into.
+//   - library defaults changed: AutoFit is true (was false), BatchedCFG is true
+//     and ConditioningCacheSize is 4, so set them after ContextParamsInit, not
+//     from a zero value.
 type SDContextParams struct {
 	ModelPath                   *uint8
 	ClipLPath                   *uint8
@@ -255,6 +276,7 @@ type SDContextParams struct {
 	EmbeddingsConnectorsPath    *uint8
 	VAEPath                     *uint8
 	AudioVAEPath                *uint8
+	AudioEncoderPath            *uint8
 	TAESDPath                   *uint8
 	ControlNetPath              *uint8
 	IPAdapterPath               *uint8
@@ -279,7 +301,7 @@ type SDContextParams struct {
 	ForceSDXLVAConvScale        bool
 	VAEFormat                   SDVAEFormat
 	MaxVRAM                     *uint8
-	StreamLayers                bool
+	DisablePrefetch             bool // disable asynchronous next-segment weight prefetch
 	EagerLoad                   bool
 	Backend                     *uint8
 	ParamsBackend               *uint8
@@ -287,6 +309,15 @@ type SDContextParams struct {
 	AutoFit                     bool
 	RPCServers                  *uint8
 	ModelArgs                   *uint8
+	DisableSegmentedCompute     bool    // force monolithic graph execution
+	BatchedCFG                  bool    // run the CFG branches in one batched forward when supported
+	LinearScale                 float32 // override linear input scaling; 0 keeps the model default
+	AttnScale                   float32 // override flash-attention K/V scaling; 0 keeps the model default
+	Tokenizer                   *uint8  // tokenizer.json path or main=FILE,clip-l=FILE,clip-g=FILE assignments; required for PiD and Lens
+	SageAttn                    bool
+	ConditioningCacheSize       int32  // cached conditioning entries per context; 0 disables caching
+	FlashAttnMode               *uint8 // on/off/auto or module assignments; nil or empty honours the legacy flags
+	ConvDirectMode              *uint8 // on/off/auto or diffusion/vae/controlnet assignments; nil or empty honours the legacy flags
 }
 
 type SDImage struct {
@@ -294,6 +325,52 @@ type SDImage struct {
 	Height  uint32
 	Channel uint32
 	Data    *uint8
+}
+
+// SDImageResult mirrors sd_image_result_t, one item of a generation result.
+// GenerationInfo is owned UTF-8 JSON using the sdcpp.generation/v1 schema.
+type SDImageResult struct {
+	Image          SDImage
+	GenerationInfo *uint8
+}
+
+// SDImagePreprocessParams mirrors sd_image_preprocess_params_t. Rules is a list
+// of semicolon-separated target=...,key=value rules; nil preserves the defaults.
+type SDImagePreprocessParams struct {
+	Rules *uint8
+}
+
+// SDRefVideo mirrors sd_ref_video_t, a reference video for video generation.
+type SDRefVideo struct {
+	Frames     *SDImage
+	FrameCount int32
+	Fps        int32
+	Audio      SDAudio
+}
+
+// SDPreviewInfo mirrors sd_preview_info_t. SamplePass counts sampling passes from
+// 1 since the last SetPreviewCallback; TotalSteps is the step count of that pass.
+// Both are zero before sampling starts.
+type SDPreviewInfo struct {
+	SamplePass int32
+	TotalSteps int32
+}
+
+// cImageGenerationResult mirrors sd_image_generation_result_t. Items is an array
+// of Count SDImageResult, not of SDImage. Callers use SDImageGenerationResult.
+type cImageGenerationResult struct {
+	Items *SDImageResult
+	Count int32
+}
+
+// cVideoGenerationResult mirrors sd_video_generation_result_t. Callers use
+// SDVideoGenerationResult.
+type cVideoGenerationResult struct {
+	Frames         *SDImage
+	FrameCount     int32
+	Audio          *SDAudio
+	Fps            int32
+	GenerationInfo *uint8
 }
 
 type SDSLGParams struct {
@@ -385,8 +462,8 @@ type SDHiresParams struct {
 	CustomSigmasCount int32
 }
 
-// SDAudio mirrors sd_audio_t. It is returned by generate_video for audio-capable
-// video models (e.g. LTX2); the image path does not produce it.
+// SDAudio mirrors sd_audio_t. It is produced by audio-capable video models (e.g.
+// LTX2) and accepted as a reference by generate_video.
 type SDAudio struct {
 	SampleRate  uint32
 	Channels    uint32
@@ -394,11 +471,8 @@ type SDAudio struct {
 	Data        *float32
 }
 
-// SDImgGenParams mirrors sd_img_gen_params_t at upstream master-802-e92e86f.
-// Drift from the previous pin: AutoResizeRefImage/IncreaseRefIndex were
-// replaced by the free-form RefImageArgs C string; IPAdapterImage,
-// IPAdapterStrength, PulidParams, QwenImageLayers, CircularX and CircularY
-// were added.
+// SDImgGenParams mirrors sd_img_gen_params_t at upstream master-1031-c6dfa9d.
+// Drift from the previous pin: ImagePreprocess was appended.
 type SDImgGenParams struct {
 	Loras             *SDLora
 	LoraCount         uint32
@@ -428,8 +502,13 @@ type SDImgGenParams struct {
 	QwenImageLayers   int32
 	CircularX         bool
 	CircularY         bool
+	ImagePreprocess   SDImagePreprocessParams
 }
 
+// SDVidGenParams mirrors sd_vid_gen_params_t at upstream master-1031-c6dfa9d.
+// Drift from the previous pin: RefImages, RefImagesCount, RefVideos,
+// RefVideosCount, RefAudios and RefAudiosCount were inserted before
+// ControlFrames, and ImagePreprocess and RefImageArgs were appended.
 type SDVidGenParams struct {
 	Loras                 *SDLora
 	LoraCount             uint32
@@ -438,6 +517,12 @@ type SDVidGenParams struct {
 	ClipSkip              int32
 	InitImage             SDImage
 	EndImage              SDImage
+	RefImages             *SDImage
+	RefImagesCount        int32
+	RefVideos             *SDRefVideo
+	RefVideosCount        int32
+	RefAudios             *SDAudio
+	RefAudiosCount        int32
 	ControlFrames         *SDImage
 	ControlFramesSize     int32
 	Width                 int32
@@ -455,6 +540,8 @@ type SDVidGenParams struct {
 	Hires                 SDHiresParams
 	CircularX             bool
 	CircularY             bool
+	ImagePreprocess       SDImagePreprocessParams
+	RefImageArgs          *uint8
 }
 
 // Define context types
@@ -469,11 +556,10 @@ type UpscalerContext struct {
 // Define callback function types.
 //
 // These mirror the C signatures, which are `void (*)(...)`. They are
-// nonetheless declared to return uintptr because purego turns a Go func
-// passed as a C callback into a machine callback via purego.NewCallback,
-// and on Windows purego delegates to syscall.NewCallback ->
-// runtime.compileCallback, which REQUIRES the callback return exactly one
-// uintptr-sized result. A void Go callback panics there with
+// nonetheless declared to return uintptr because a Go func becomes a C
+// callback through purego.NewCallback, and on Windows purego delegates to
+// syscall.NewCallback -> runtime.compileCallback, which REQUIRES the callback
+// return exactly one uintptr-sized result. A void Go callback panics there with
 // "compileCallback: expected function with one uintptr-sized result"
 // (the symptom seen during stable-diffusion image generation on Windows).
 // The C caller declares these as void and simply ignores the returned
@@ -494,9 +580,11 @@ type SDPreviewCallback func(step int32, frameCount int32, frames *SDImage, isNoi
 
 // Dynamic library function declarations
 var (
-	sdSetLogCallback         func(cb SDLogCallback, data unsafe.Pointer)
-	sdSetProgressCallback    func(cb SDProgressCallback, data unsafe.Pointer)
-	sdSetPreviewCallback     func(cb SDPreviewCallback, mode Preview, interval int32, denoised bool, noisy bool, data unsafe.Pointer)
+	// The setters take the callback as a uintptr from purego.NewCallback, because
+	// purego panics on a nil func argument and 0 is how a callback is cleared.
+	sdSetLogCallback         func(cb uintptr, data unsafe.Pointer)
+	sdSetProgressCallback    func(cb uintptr, data unsafe.Pointer)
+	sdSetPreviewCallback     func(cb uintptr, mode Preview, interval int32, denoised bool, noisy bool, data unsafe.Pointer)
 	sdGetNumPhysicalCores    func() int32
 	sdGetSystemInfo          func() *uint8
 	sdTypeName               func(typ SDType) *uint8
@@ -524,13 +612,13 @@ var (
 	sdGetDefaultScheduler    func(ctx unsafe.Pointer, sampleMethod SampleMethod) Scheduler
 	sdImgGenParamsInit       func(params *SDImgGenParams)
 	sdImgGenParamsToStr      func(params *SDImgGenParams) *uint8
-	generateImage            func(ctx unsafe.Pointer, params *SDImgGenParams, imagesOut **SDImage, numImagesOut *int32) bool
+	generateImage            func(ctx unsafe.Pointer, params *SDImgGenParams, resultOut **cImageGenerationResult) bool
 	sdCancelGeneration       func(ctx unsafe.Pointer, mode SDCancelMode)
 	sdVidGenParamsInit       func(params *SDVidGenParams)
-	generateVideo            func(ctx unsafe.Pointer, params *SDVidGenParams, framesOut **SDImage, numFramesOut *int32, audioOut **SDAudio) bool
+	generateVideo            func(ctx unsafe.Pointer, params *SDVidGenParams, resultOut **cVideoGenerationResult) bool
 	newUpscalerContext       func(esrganPath *uint8, direct bool, nThreads int32, tileSize int32, backend *uint8, paramsBackend *uint8) unsafe.Pointer
 	freeUpscalerContext      func(ctx unsafe.Pointer)
-	upscale                  func(ctx unsafe.Pointer, inputImage *SDImage, upscaleFactor uint32, imagesOut **SDImage, numImagesOut *int32) bool
+	upscale                  func(ctx unsafe.Pointer, inputImage *SDImage, upscaleFactor uint32, resultOut **cImageGenerationResult) bool
 	getUpscaleFactor         func(ctx unsafe.Pointer) int32
 	convert                  func(inputPath *uint8, vaePath *uint8, outputPath *uint8, outputType SDType, tensorTypeRules *uint8, convertName bool) bool
 	preprocessCanny          func(image *SDImage, highThreshold float32, lowThreshold float32, weak float32, strong float32, inverse bool) bool
@@ -544,20 +632,40 @@ var (
 	sdHiresParamsInit            func(params *SDHiresParams)
 	freeSDAudio                  func(audio *SDAudio)
 	freeSDImages                 func(images *SDImage, numImages int32)
+	freeSDImageGenerationResult  func(result *cImageGenerationResult)
+	freeSDVideoGenerationResult  func(result *cVideoGenerationResult)
+	sdGetModelVersionName        func(ctx unsafe.Pointer) *uint8
+	// sd_get_preview_info returns sd_preview_info_t by value. purego only maps
+	// struct returns on darwin at the version this module requires, so the
+	// 8-byte struct is read from the integer return register instead, where
+	// SysV, AAPCS64 and Win64 all put it. See previewInfoFromRegister.
+	sdGetPreviewInfo func() uint64
 )
 
 // The shared library is loaded lazily via Load (see load.go); importing this
 // package performs no filesystem access and no dlopen.
 
+// byValueImageArgsSupported reports whether upscale and preprocess_canny can be
+// called on this target. Both take sd_image_t by value, which purego cannot pass
+// at the version this module requires. AAPCS64 and Win64 pass an aggregate that
+// large as a pointer to a copy, so the bindings above declare *SDImage. SysV amd64
+// passes it on the stack instead, which shifts every other argument: calling
+// through the pointer there writes through upscale_factor as if it were
+// result_out and crashes. Those targets refuse the call.
+var byValueImageArgsSupported = runtime.GOARCH != "amd64" || runtime.GOOS == "windows"
+
 // Wrapper functions
-type SDLogLevelType int32
+
+// SDLogLevelType is the level handed to an SDLogCallbackType. It is SDLogLevel, so
+// the SDLog* constants compare against it directly.
+type SDLogLevelType = SDLogLevel
 
 type SDLogCallbackType func(level SDLogLevelType, text string, data interface{})
 
 // SetLogCallback sets log callback
 func SetLogCallback(cb SDLogCallbackType, data interface{}) {
 	if cb == nil {
-		sdSetLogCallback(nil, nil)
+		sdSetLogCallback(0, nil)
 		return
 	}
 
@@ -569,7 +677,7 @@ func SetLogCallback(cb SDLogCallbackType, data interface{}) {
 		return 0
 	}
 
-	sdSetLogCallback(cCallback, nil)
+	sdSetLogCallback(purego.NewCallback(cCallback), nil)
 }
 
 // SetProgressCallback sets progress callback.
@@ -585,7 +693,7 @@ func SetLogCallback(cb SDLogCallbackType, data interface{}) {
 // signatures and work everywhere.
 func SetProgressCallback(cb func(step int, steps int, time float32, data interface{}), data interface{}) {
 	if cb == nil {
-		sdSetProgressCallback(nil, nil)
+		sdSetProgressCallback(0, nil)
 		return
 	}
 	if runtime.GOOS == "windows" {
@@ -599,13 +707,13 @@ func SetProgressCallback(cb func(step int, steps int, time float32, data interfa
 		return 0
 	}
 
-	sdSetProgressCallback(cCallback, nil)
+	sdSetProgressCallback(purego.NewCallback(cCallback), nil)
 }
 
 // SetPreviewCallback sets preview callback
 func SetPreviewCallback(cb func(step int, frameCount int, frames []SDImage, isNoisy bool, data interface{}), mode Preview, interval int, denoised bool, noisy bool, data interface{}) {
 	if cb == nil {
-		sdSetPreviewCallback(nil, mode, int32(interval), denoised, noisy, nil)
+		sdSetPreviewCallback(0, mode, int32(interval), denoised, noisy, nil)
 		return
 	}
 
@@ -619,7 +727,7 @@ func SetPreviewCallback(cb func(step int, frameCount int, frames []SDImage, isNo
 		return 0
 	}
 
-	sdSetPreviewCallback(cCallback, mode, int32(interval), denoised, noisy, nil)
+	sdSetPreviewCallback(purego.NewCallback(cCallback), mode, int32(interval), denoised, noisy, nil)
 }
 
 // GetNumPhysicalCores gets the number of physical cores
@@ -775,22 +883,17 @@ func ImgGenParamsToStr(params *SDImgGenParams) string {
 	return CGoString(sdImgGenParamsToStr(params))
 }
 
-// GenerateImage generates images. As of the master-802 upstream resync,
-// generate_image returns a success bool and yields a malloc'd array of images
-// through out-parameters (instead of returning the array directly), so this
-// wrapper returns the native array pointer plus the number of images in it.
-// On failure it returns (nil, 0). The caller owns the returned array and must
-// release it with FreeImages(images, count) when done.
-func (ctx *SDContext) GenerateImage(params *SDImgGenParams) (*SDImage, int) {
-	var (
-		imagesPtr *SDImage
-		numImages int32
-	)
-	ok := generateImage(ctx.ptr, params, &imagesPtr, &numImages)
-	if !ok || imagesPtr == nil {
-		return nil, 0
+// GenerateImage generates images. On success the caller owns the returned result
+// and must call its Free method once done reading it; on failure, or when the
+// library produced no images, it returns nil. Results do not depend on the
+// context, so they may outlive it.
+func (ctx *SDContext) GenerateImage(params *SDImgGenParams) *SDImageGenerationResult {
+	if ctx == nil || generateImage == nil {
+		return nil
 	}
-	return imagesPtr, int(numImages)
+	var raw *cImageGenerationResult
+	ok := generateImage(ctx.ptr, params, &raw)
+	return newImageGenerationResult(ok, raw)
 }
 
 // CancelGeneration requests cancellation of the in-flight generation on this
@@ -806,32 +909,16 @@ func VidGenParamsInit(params *SDVidGenParams) {
 	sdVidGenParamsInit(params)
 }
 
-// GenerateVideo generates video. As of the upstream resync, generate_video
-// returns a success bool and also yields an audio buffer for audio-capable
-// models (e.g. LTX2). This binding does not surface audio, so the buffer is
-// freed immediately; the public ([]SDImage, int) signature is unchanged so
-// existing callers keep working.
-func (ctx *SDContext) GenerateVideo(params *SDVidGenParams) ([]SDImage, int) {
-	var (
-		framesPtr *SDImage
-		numFrames int32
-		audioPtr  *SDAudio
-	)
-
-	ok := generateVideo(ctx.ptr, params, &framesPtr, &numFrames, &audioPtr)
-	if audioPtr != nil && freeSDAudio != nil {
-		freeSDAudio(audioPtr)
+// GenerateVideo generates a video. On success the caller owns the returned result
+// and must call its Free method once done reading it; on failure, or when the
+// library produced no frames, it returns nil.
+func (ctx *SDContext) GenerateVideo(params *SDVidGenParams) *SDVideoGenerationResult {
+	if ctx == nil || generateVideo == nil {
+		return nil
 	}
-	if !ok || framesPtr == nil {
-		return nil, 0
-	}
-
-	frames := make([]SDImage, numFrames)
-	for i := range frames {
-		frames[i] = *(*SDImage)(unsafe.Add(unsafe.Pointer(framesPtr), uintptr(i)*unsafe.Sizeof(SDImage{})))
-	}
-
-	return frames, int(numFrames)
+	var raw *cVideoGenerationResult
+	ok := generateVideo(ctx.ptr, params, &raw)
+	return newVideoGenerationResult(ok, raw)
 }
 
 // NewUpscalerContext creates a new upscaler context. backend and paramsBackend
@@ -859,21 +946,16 @@ func (ctx *UpscalerContext) Free() {
 	}
 }
 
-// Upscale upscales an image. As of the master-802 upstream resync, upscale
-// returns a success bool and yields a malloc'd image array through
-// out-parameters, so this wrapper returns the native array pointer plus the
-// number of images in it ((nil, 0) on failure). The caller owns the returned
-// array and must release it with FreeImages(images, count) when done.
-func (ctx *UpscalerContext) Upscale(inputImage SDImage, upscaleFactor uint32) (*SDImage, int) {
-	var (
-		imagesPtr *SDImage
-		numImages int32
-	)
-	ok := upscale(ctx.ptr, &inputImage, upscaleFactor, &imagesPtr, &numImages)
-	if !ok || imagesPtr == nil {
-		return nil, 0
+// Upscale upscales an image. On success the caller owns the returned result and
+// must call its Free method once done reading it; on failure it returns nil. It
+// always returns nil on linux/amd64, see byValueImageArgsSupported.
+func (ctx *UpscalerContext) Upscale(inputImage SDImage, upscaleFactor uint32) *SDImageGenerationResult {
+	if ctx == nil || upscale == nil || !byValueImageArgsSupported {
+		return nil
 	}
-	return imagesPtr, int(numImages)
+	var raw *cImageGenerationResult
+	ok := upscale(ctx.ptr, &inputImage, upscaleFactor, &raw)
+	return newImageGenerationResult(ok, raw)
 }
 
 // GetUpscaleFactor gets upscale factor
@@ -898,8 +980,12 @@ func Convert(inputPath, vaePath, outputPath string, outputType SDType, tensorTyp
 	return convert(cInputPath, cVaePath, cOutputPath, outputType, cTensorTypeRules, convertName)
 }
 
-// PreprocessCanny preprocesses Canny edge detection
+// PreprocessCanny preprocesses Canny edge detection. It always returns false on
+// linux/amd64, see byValueImageArgsSupported.
 func PreprocessCanny(image SDImage, highThreshold, lowThreshold, weak, strong float32, inverse bool) bool {
+	if preprocessCanny == nil || !byValueImageArgsSupported {
+		return false
+	}
 	return preprocessCanny(&image, highThreshold, lowThreshold, weak, strong, inverse)
 }
 
@@ -930,6 +1016,31 @@ func StrToSDHiresUpscaler(str string) SDHiresUpscaler {
 	return strToSDHiresUpscaler(cStr)
 }
 
+// ModelVersionName returns the name of the loaded model's version, or "Unknown"
+// when the context holds no model.
+func (ctx *SDContext) ModelVersionName() string {
+	if ctx == nil || sdGetModelVersionName == nil {
+		return ""
+	}
+	return CGoString(sdGetModelVersionName(ctx.ptr))
+}
+
+// GetPreviewInfo reports the sampling pass the current preview belongs to. Call
+// it from a preview callback; both fields are zero before sampling starts.
+func GetPreviewInfo() SDPreviewInfo {
+	if sdGetPreviewInfo == nil {
+		return SDPreviewInfo{}
+	}
+	return previewInfoFromRegister(sdGetPreviewInfo())
+}
+
+// previewInfoFromRegister unpacks sd_preview_info_t from the integer return
+// register. sample_pass, the first field, occupies the low 32 bits on all the
+// little-endian targets the library is built for.
+func previewInfoFromRegister(reg uint64) SDPreviewInfo {
+	return SDPreviewInfo{SamplePass: int32(uint32(reg)), TotalSteps: int32(uint32(reg >> 32))}
+}
+
 // SupportsImageGeneration reports whether the loaded model can generate images.
 func (ctx *SDContext) SupportsImageGeneration() bool {
 	return sdCtxSupportsImageGeneration(ctx.ptr)
@@ -940,10 +1051,12 @@ func (ctx *SDContext) SupportsVideoGeneration() bool {
 	return sdCtxSupportsVideoGeneration(ctx.ptr)
 }
 
-// FreeAudio releases a native audio buffer returned by generate_video. It is
-// safe to call with a nil audio or when the native binding is unavailable (the
-// library has not been loaded / the symbol was not registered), in which case
-// it does nothing — consistent with FreeImage/FreeImages.
+// FreeAudio releases a native audio buffer allocated by the library. Audio from
+// SDVideoGenerationResult.Audio belongs to that result and is released by its
+// Free method instead. It is safe to call with a nil audio or when the native
+// binding is unavailable (the library has not been loaded / the symbol was not
+// registered), in which case it does nothing — consistent with
+// FreeImage/FreeImages.
 func FreeAudio(audio *SDAudio) {
 	if audio != nil && freeSDAudio != nil {
 		freeSDAudio(audio)
