@@ -14,9 +14,8 @@ import (
 //	stablediffusion generate: handler panic: compileCallback:
 //	expected function with one uintptr-sized result
 //
-// purego turns a Go func passed as a C callback into a machine callback via
-// purego.NewCallback, which on Windows delegates to syscall.NewCallback ->
-// runtime.compileCallback. That path REQUIRES the callback return exactly one
+// A Go func becomes a machine callback through purego.NewCallback, which on
+// Windows delegates to syscall.NewCallback -> runtime.compileCallback. That path REQUIRES the callback return exactly one
 // uintptr-sized value; a void Go callback panics. The log/progress/preview
 // callback types (and their wrapper closures in SetLogCallback /
 // SetProgressCallback / SetPreviewCallback) therefore return uintptr.
@@ -50,6 +49,33 @@ func TestCallbackSignaturesAcceptedByPurego(t *testing.T) {
 
 	mustWrap(t, "SDLogCallback", logCB)
 	mustWrap(t, "SDPreviewCallback", previewCB)
+}
+
+// Passing nil clears a callback. purego panics when handed a nil func, so the
+// setters must reach the library with a 0 callback instead.
+func TestClearingCallbacksPassesNull(t *testing.T) {
+	saveLog, saveProgress, savePreview := sdSetLogCallback, sdSetProgressCallback, sdSetPreviewCallback
+	t.Cleanup(func() {
+		sdSetLogCallback, sdSetProgressCallback, sdSetPreviewCallback = saveLog, saveProgress, savePreview
+	})
+
+	var calls int
+	expectNull := func(name string, cb uintptr) {
+		calls++
+		if cb != 0 {
+			t.Errorf("%s: cb = %#x, want 0", name, cb)
+		}
+	}
+	sdSetLogCallback = func(cb uintptr, _ unsafe.Pointer) { expectNull("log", cb) }
+	sdSetProgressCallback = func(cb uintptr, _ unsafe.Pointer) { expectNull("progress", cb) }
+	sdSetPreviewCallback = func(cb uintptr, _ Preview, _ int32, _, _ bool, _ unsafe.Pointer) { expectNull("preview", cb) }
+
+	SetLogCallback(nil, nil)
+	SetProgressCallback(nil, nil)
+	SetPreviewCallback(nil, PreviewNone, 0, false, false, nil)
+	if calls != 3 {
+		t.Errorf("setters called %d times, want 3", calls)
+	}
 }
 
 // TestSetProgressCallbackNoPanicOnWindows verifies the graceful handling of a

@@ -3,6 +3,8 @@ package sd
 import (
 	"runtime"
 	"unsafe"
+
+	"github.com/ebitengine/purego"
 )
 
 // Define enum types
@@ -554,11 +556,10 @@ type UpscalerContext struct {
 // Define callback function types.
 //
 // These mirror the C signatures, which are `void (*)(...)`. They are
-// nonetheless declared to return uintptr because purego turns a Go func
-// passed as a C callback into a machine callback via purego.NewCallback,
-// and on Windows purego delegates to syscall.NewCallback ->
-// runtime.compileCallback, which REQUIRES the callback return exactly one
-// uintptr-sized result. A void Go callback panics there with
+// nonetheless declared to return uintptr because a Go func becomes a C
+// callback through purego.NewCallback, and on Windows purego delegates to
+// syscall.NewCallback -> runtime.compileCallback, which REQUIRES the callback
+// return exactly one uintptr-sized result. A void Go callback panics there with
 // "compileCallback: expected function with one uintptr-sized result"
 // (the symptom seen during stable-diffusion image generation on Windows).
 // The C caller declares these as void and simply ignores the returned
@@ -579,9 +580,11 @@ type SDPreviewCallback func(step int32, frameCount int32, frames *SDImage, isNoi
 
 // Dynamic library function declarations
 var (
-	sdSetLogCallback         func(cb SDLogCallback, data unsafe.Pointer)
-	sdSetProgressCallback    func(cb SDProgressCallback, data unsafe.Pointer)
-	sdSetPreviewCallback     func(cb SDPreviewCallback, mode Preview, interval int32, denoised bool, noisy bool, data unsafe.Pointer)
+	// The setters take the callback as a uintptr from purego.NewCallback, because
+	// purego panics on a nil func argument and 0 is how a callback is cleared.
+	sdSetLogCallback         func(cb uintptr, data unsafe.Pointer)
+	sdSetProgressCallback    func(cb uintptr, data unsafe.Pointer)
+	sdSetPreviewCallback     func(cb uintptr, mode Preview, interval int32, denoised bool, noisy bool, data unsafe.Pointer)
 	sdGetNumPhysicalCores    func() int32
 	sdGetSystemInfo          func() *uint8
 	sdTypeName               func(typ SDType) *uint8
@@ -650,7 +653,7 @@ type SDLogCallbackType func(level SDLogLevelType, text string, data interface{})
 // SetLogCallback sets log callback
 func SetLogCallback(cb SDLogCallbackType, data interface{}) {
 	if cb == nil {
-		sdSetLogCallback(nil, nil)
+		sdSetLogCallback(0, nil)
 		return
 	}
 
@@ -662,7 +665,7 @@ func SetLogCallback(cb SDLogCallbackType, data interface{}) {
 		return 0
 	}
 
-	sdSetLogCallback(cCallback, nil)
+	sdSetLogCallback(purego.NewCallback(cCallback), nil)
 }
 
 // SetProgressCallback sets progress callback.
@@ -678,7 +681,7 @@ func SetLogCallback(cb SDLogCallbackType, data interface{}) {
 // signatures and work everywhere.
 func SetProgressCallback(cb func(step int, steps int, time float32, data interface{}), data interface{}) {
 	if cb == nil {
-		sdSetProgressCallback(nil, nil)
+		sdSetProgressCallback(0, nil)
 		return
 	}
 	if runtime.GOOS == "windows" {
@@ -692,13 +695,13 @@ func SetProgressCallback(cb func(step int, steps int, time float32, data interfa
 		return 0
 	}
 
-	sdSetProgressCallback(cCallback, nil)
+	sdSetProgressCallback(purego.NewCallback(cCallback), nil)
 }
 
 // SetPreviewCallback sets preview callback
 func SetPreviewCallback(cb func(step int, frameCount int, frames []SDImage, isNoisy bool, data interface{}), mode Preview, interval int, denoised bool, noisy bool, data interface{}) {
 	if cb == nil {
-		sdSetPreviewCallback(nil, mode, int32(interval), denoised, noisy, nil)
+		sdSetPreviewCallback(0, mode, int32(interval), denoised, noisy, nil)
 		return
 	}
 
@@ -712,7 +715,7 @@ func SetPreviewCallback(cb func(step int, frameCount int, frames []SDImage, isNo
 		return 0
 	}
 
-	sdSetPreviewCallback(cCallback, mode, int32(interval), denoised, noisy, nil)
+	sdSetPreviewCallback(purego.NewCallback(cCallback), mode, int32(interval), denoised, noisy, nil)
 }
 
 // GetNumPhysicalCores gets the number of physical cores
