@@ -645,6 +645,15 @@ var (
 // The shared library is loaded lazily via Load (see load.go); importing this
 // package performs no filesystem access and no dlopen.
 
+// byValueImageArgsSupported reports whether upscale and preprocess_canny can be
+// called on this target. Both take sd_image_t by value, which purego cannot pass
+// at the version this module requires. AAPCS64 and Win64 pass an aggregate that
+// large as a pointer to a copy, so the bindings above declare *SDImage. SysV amd64
+// passes it on the stack instead, which shifts every other argument: calling
+// through the pointer there writes through upscale_factor as if it were
+// result_out and crashes. Those targets refuse the call.
+var byValueImageArgsSupported = runtime.GOARCH != "amd64" || runtime.GOOS == "windows"
+
 // Wrapper functions
 
 // SDLogLevelType is the level handed to an SDLogCallbackType. It is SDLogLevel, so
@@ -938,9 +947,10 @@ func (ctx *UpscalerContext) Free() {
 }
 
 // Upscale upscales an image. On success the caller owns the returned result and
-// must call its Free method once done reading it; on failure it returns nil.
+// must call its Free method once done reading it; on failure it returns nil. It
+// always returns nil on linux/amd64, see byValueImageArgsSupported.
 func (ctx *UpscalerContext) Upscale(inputImage SDImage, upscaleFactor uint32) *SDImageGenerationResult {
-	if ctx == nil || upscale == nil {
+	if ctx == nil || upscale == nil || !byValueImageArgsSupported {
 		return nil
 	}
 	var raw *cImageGenerationResult
@@ -970,8 +980,12 @@ func Convert(inputPath, vaePath, outputPath string, outputType SDType, tensorTyp
 	return convert(cInputPath, cVaePath, cOutputPath, outputType, cTensorTypeRules, convertName)
 }
 
-// PreprocessCanny preprocesses Canny edge detection
+// PreprocessCanny preprocesses Canny edge detection. It always returns false on
+// linux/amd64, see byValueImageArgsSupported.
 func PreprocessCanny(image SDImage, highThreshold, lowThreshold, weak, strong float32, inverse bool) bool {
+	if preprocessCanny == nil || !byValueImageArgsSupported {
+		return false
+	}
 	return preprocessCanny(&image, highThreshold, lowThreshold, weak, strong, inverse)
 }
 

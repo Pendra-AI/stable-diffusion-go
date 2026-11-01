@@ -197,6 +197,9 @@ go run ./examples/txt2vid   # text-to-video (requires FFmpeg for encoding)
   ```
 
   The high-level `GenerateImage` already does this for you.
+- **linux/amd64 limitation.** `Upscale` and `PreprocessCanny` fail there: their
+  C functions take an image by value, which the binding cannot pass under the
+  SysV calling convention.
 - **Video** generation uses FFmpeg to encode frames — make sure `ffmpeg` is on
   your `PATH`.
 - **Performance.** Tune `NThreads`, enable `DiffusionFlashAttn`, and use

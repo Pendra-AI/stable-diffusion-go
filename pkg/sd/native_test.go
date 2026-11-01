@@ -3,7 +3,6 @@ package sd
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -304,12 +303,11 @@ func TestNativeDeviceMemory(t *testing.T) {
 	}
 }
 
-// preprocess_canny takes sd_image_t by value. The binding's pointer is how
-// AAPCS64 and Win64 pass an aggregate this large, but not SysV.
+// preprocess_canny takes sd_image_t by value, see byValueImageArgsSupported.
 func TestNativePreprocessCanny(t *testing.T) {
 	loadNativeLibrary(t)
-	if runtime.GOARCH == "amd64" && runtime.GOOS != "windows" {
-		t.Skip("by-value sd_image_t is not bound correctly on SysV amd64")
+	if !byValueImageArgsSupported {
+		t.Skip("by-value sd_image_t is not supported on this target")
 	}
 	const size = 16
 	data := make([]uint8, size*size*3)

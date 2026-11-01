@@ -234,8 +234,9 @@ func TestGenerateWithoutLibrary(t *testing.T) {
 }
 
 func TestUpscaleWrapsResult(t *testing.T) {
-	saveUpscale := upscale
-	t.Cleanup(func() { upscale = saveUpscale })
+	saveUpscale, saveSupported := upscale, byValueImageArgsSupported
+	t.Cleanup(func() { upscale, byValueImageArgsSupported = saveUpscale, saveSupported })
+	byValueImageArgsSupported = true
 	imageFrees, _ := stubFreeFuncs(t)
 
 	var gotFactor uint32
@@ -256,6 +257,29 @@ func TestUpscaleWrapsResult(t *testing.T) {
 	upscale = func(unsafe.Pointer, *SDImage, uint32, **cImageGenerationResult) bool { return false }
 	if (&UpscalerContext{}).Upscale(SDImage{}, 4) != nil {
 		t.Error("failed Upscale != nil")
+	}
+}
+
+// Where sd_image_t cannot be passed by value, the native call would crash, so it
+// must not be made at all.
+func TestByValueImageCallsAreRefusedWhereUnsupported(t *testing.T) {
+	saveUpscale, saveCanny, saveSupported := upscale, preprocessCanny, byValueImageArgsSupported
+	t.Cleanup(func() { upscale, preprocessCanny, byValueImageArgsSupported = saveUpscale, saveCanny, saveSupported })
+	byValueImageArgsSupported = false
+
+	upscale = func(unsafe.Pointer, *SDImage, uint32, **cImageGenerationResult) bool {
+		t.Error("upscale was called")
+		return true
+	}
+	preprocessCanny = func(*SDImage, float32, float32, float32, float32, bool) bool {
+		t.Error("preprocess_canny was called")
+		return true
+	}
+	if (&UpscalerContext{}).Upscale(SDImage{}, 2) != nil {
+		t.Error("Upscale != nil")
+	}
+	if PreprocessCanny(SDImage{}, 0, 0, 0, 0, false) {
+		t.Error("PreprocessCanny = true")
 	}
 }
 
