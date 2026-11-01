@@ -26,7 +26,7 @@ go get github.com/pendra-ai/stable-diffusion-go
 
 This repository contains **only the Go binding** — the native shared library is
 not committed. The library is built from the upstream commit pinned in
-[`lib/version.txt`](lib/version.txt) (currently `master-802-e92e86f`).
+[`lib/version.txt`](lib/version.txt) (currently `master-1031-c6dfa9d`).
 
 ### Prebuilt archives
 
@@ -178,10 +178,25 @@ go run ./examples/txt2vid   # text-to-video (requires FFmpeg for encoding)
   instance and call `GenerateImage` repeatedly; release it once with
   `defer sd.Free()`. Don't create a new instance per request.
 - **In-memory PNG.** Need the encoded bytes instead of a file? The low-level
-  package offers `sd.EncodePNG(*sd.SDImage) ([]byte, error)`.
-- **Freeing native images.** If you work with raw results from the low-level
-  `pkg/sd` API, free the native-allocated buffers with `sd.FreeImage` /
-  `sd.FreeImages`. The high-level `GenerateImage` already does this for you.
+  package offers `sd.EncodePNG(*sd.SDImage) ([]byte, error)`. Like `SaveImage` it
+  keeps the alpha channel of 4-channel images.
+- **Low-level results.** In `pkg/sd`, `GenerateImage` and `Upscale` return a
+  `*SDImageGenerationResult` and `GenerateVideo` a `*SDVideoGenerationResult`,
+  or nil on failure. A result owns its native memory, so read from it first and
+  then free it. Do not pass its images to `sd.FreeImages`:
+
+  ```go
+  result := ctx.GenerateImage(&params)
+  if result == nil {
+      return errors.New("generation failed")
+  }
+  defer result.Free()
+
+  png, err := sd.EncodePNG(result.Image(0))
+  meta := result.GenerationInfo(0) // JSON, schema sdcpp.generation/v1
+  ```
+
+  The high-level `GenerateImage` already does this for you.
 - **Video** generation uses FFmpeg to encode frames — make sure `ffmpeg` is on
   your `PATH`.
 - **Performance.** Tune `NThreads`, enable `DiffusionFlashAttn`, and use
@@ -193,7 +208,7 @@ go run ./examples/txt2vid   # text-to-video (requires FFmpeg for encoding)
 ```
 stable-diffusion-go/
 ├── stable_diffusion.go   # high-level wrapper (NewStableDiffusion, GenerateImage, ...)
-├── pkg/sd/               # low-level binding (Load, contexts, EncodePNG, FreeImage, ...)
+├── pkg/sd/               # low-level binding (Load, contexts, results, EncodePNG, ...)
 ├── examples/
 │   ├── txt2img/          # text-to-image example
 │   └── txt2vid/          # text-to-video example
