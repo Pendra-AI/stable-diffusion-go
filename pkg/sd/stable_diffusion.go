@@ -609,13 +609,13 @@ var (
 	sdGetDefaultScheduler    func(ctx unsafe.Pointer, sampleMethod SampleMethod) Scheduler
 	sdImgGenParamsInit       func(params *SDImgGenParams)
 	sdImgGenParamsToStr      func(params *SDImgGenParams) *uint8
-	generateImage            func(ctx unsafe.Pointer, params *SDImgGenParams, imagesOut **SDImage, numImagesOut *int32) bool
+	generateImage            func(ctx unsafe.Pointer, params *SDImgGenParams, resultOut **cImageGenerationResult) bool
 	sdCancelGeneration       func(ctx unsafe.Pointer, mode SDCancelMode)
 	sdVidGenParamsInit       func(params *SDVidGenParams)
-	generateVideo            func(ctx unsafe.Pointer, params *SDVidGenParams, framesOut **SDImage, numFramesOut *int32, audioOut **SDAudio) bool
+	generateVideo            func(ctx unsafe.Pointer, params *SDVidGenParams, resultOut **cVideoGenerationResult) bool
 	newUpscalerContext       func(esrganPath *uint8, direct bool, nThreads int32, tileSize int32, backend *uint8, paramsBackend *uint8) unsafe.Pointer
 	freeUpscalerContext      func(ctx unsafe.Pointer)
-	upscale                  func(ctx unsafe.Pointer, inputImage *SDImage, upscaleFactor uint32, imagesOut **SDImage, numImagesOut *int32) bool
+	upscale                  func(ctx unsafe.Pointer, inputImage *SDImage, upscaleFactor uint32, resultOut **cImageGenerationResult) bool
 	getUpscaleFactor         func(ctx unsafe.Pointer) int32
 	convert                  func(inputPath *uint8, vaePath *uint8, outputPath *uint8, outputType SDType, tensorTypeRules *uint8, convertName bool) bool
 	preprocessCanny          func(image *SDImage, highThreshold float32, lowThreshold float32, weak float32, strong float32, inverse bool) bool
@@ -629,6 +629,14 @@ var (
 	sdHiresParamsInit            func(params *SDHiresParams)
 	freeSDAudio                  func(audio *SDAudio)
 	freeSDImages                 func(images *SDImage, numImages int32)
+	freeSDImageGenerationResult  func(result *cImageGenerationResult)
+	freeSDVideoGenerationResult  func(result *cVideoGenerationResult)
+	sdGetModelVersionName        func(ctx unsafe.Pointer) *uint8
+	// sd_get_preview_info returns sd_preview_info_t by value. purego only maps
+	// struct returns on darwin at the version this module requires, so the
+	// 8-byte struct is read from the integer return register instead, where
+	// SysV, AAPCS64 and Win64 all put it. See previewInfoFromRegister.
+	sdGetPreviewInfo func() uint64
 )
 
 // The shared library is loaded lazily via Load (see load.go); importing this
@@ -860,22 +868,17 @@ func ImgGenParamsToStr(params *SDImgGenParams) string {
 	return CGoString(sdImgGenParamsToStr(params))
 }
 
-// GenerateImage generates images. As of the master-802 upstream resync,
-// generate_image returns a success bool and yields a malloc'd array of images
-// through out-parameters (instead of returning the array directly), so this
-// wrapper returns the native array pointer plus the number of images in it.
-// On failure it returns (nil, 0). The caller owns the returned array and must
-// release it with FreeImages(images, count) when done.
-func (ctx *SDContext) GenerateImage(params *SDImgGenParams) (*SDImage, int) {
-	var (
-		imagesPtr *SDImage
-		numImages int32
-	)
-	ok := generateImage(ctx.ptr, params, &imagesPtr, &numImages)
-	if !ok || imagesPtr == nil {
-		return nil, 0
+// GenerateImage generates images. On success the caller owns the returned result
+// and must call its Free method once done reading it; on failure, or when the
+// library produced no images, it returns nil. Results do not depend on the
+// context, so they may outlive it.
+func (ctx *SDContext) GenerateImage(params *SDImgGenParams) *SDImageGenerationResult {
+	if ctx == nil || generateImage == nil {
+		return nil
 	}
-	return imagesPtr, int(numImages)
+	var raw *cImageGenerationResult
+	ok := generateImage(ctx.ptr, params, &raw)
+	return newImageGenerationResult(ok, raw)
 }
 
 // CancelGeneration requests cancellation of the in-flight generation on this
@@ -891,32 +894,16 @@ func VidGenParamsInit(params *SDVidGenParams) {
 	sdVidGenParamsInit(params)
 }
 
-// GenerateVideo generates video. As of the upstream resync, generate_video
-// returns a success bool and also yields an audio buffer for audio-capable
-// models (e.g. LTX2). This binding does not surface audio, so the buffer is
-// freed immediately; the public ([]SDImage, int) signature is unchanged so
-// existing callers keep working.
-func (ctx *SDContext) GenerateVideo(params *SDVidGenParams) ([]SDImage, int) {
-	var (
-		framesPtr *SDImage
-		numFrames int32
-		audioPtr  *SDAudio
-	)
-
-	ok := generateVideo(ctx.ptr, params, &framesPtr, &numFrames, &audioPtr)
-	if audioPtr != nil && freeSDAudio != nil {
-		freeSDAudio(audioPtr)
+// GenerateVideo generates a video. On success the caller owns the returned result
+// and must call its Free method once done reading it; on failure, or when the
+// library produced no frames, it returns nil.
+func (ctx *SDContext) GenerateVideo(params *SDVidGenParams) *SDVideoGenerationResult {
+	if ctx == nil || generateVideo == nil {
+		return nil
 	}
-	if !ok || framesPtr == nil {
-		return nil, 0
-	}
-
-	frames := make([]SDImage, numFrames)
-	for i := range frames {
-		frames[i] = *(*SDImage)(unsafe.Add(unsafe.Pointer(framesPtr), uintptr(i)*unsafe.Sizeof(SDImage{})))
-	}
-
-	return frames, int(numFrames)
+	var raw *cVideoGenerationResult
+	ok := generateVideo(ctx.ptr, params, &raw)
+	return newVideoGenerationResult(ok, raw)
 }
 
 // NewUpscalerContext creates a new upscaler context. backend and paramsBackend
@@ -944,21 +931,15 @@ func (ctx *UpscalerContext) Free() {
 	}
 }
 
-// Upscale upscales an image. As of the master-802 upstream resync, upscale
-// returns a success bool and yields a malloc'd image array through
-// out-parameters, so this wrapper returns the native array pointer plus the
-// number of images in it ((nil, 0) on failure). The caller owns the returned
-// array and must release it with FreeImages(images, count) when done.
-func (ctx *UpscalerContext) Upscale(inputImage SDImage, upscaleFactor uint32) (*SDImage, int) {
-	var (
-		imagesPtr *SDImage
-		numImages int32
-	)
-	ok := upscale(ctx.ptr, &inputImage, upscaleFactor, &imagesPtr, &numImages)
-	if !ok || imagesPtr == nil {
-		return nil, 0
+// Upscale upscales an image. On success the caller owns the returned result and
+// must call its Free method once done reading it; on failure it returns nil.
+func (ctx *UpscalerContext) Upscale(inputImage SDImage, upscaleFactor uint32) *SDImageGenerationResult {
+	if ctx == nil || upscale == nil {
+		return nil
 	}
-	return imagesPtr, int(numImages)
+	var raw *cImageGenerationResult
+	ok := upscale(ctx.ptr, &inputImage, upscaleFactor, &raw)
+	return newImageGenerationResult(ok, raw)
 }
 
 // GetUpscaleFactor gets upscale factor
@@ -1015,6 +996,31 @@ func StrToSDHiresUpscaler(str string) SDHiresUpscaler {
 	return strToSDHiresUpscaler(cStr)
 }
 
+// ModelVersionName returns the name of the loaded model's version, or "Unknown"
+// when the context holds no model.
+func (ctx *SDContext) ModelVersionName() string {
+	if ctx == nil || sdGetModelVersionName == nil {
+		return ""
+	}
+	return CGoString(sdGetModelVersionName(ctx.ptr))
+}
+
+// GetPreviewInfo reports the sampling pass the current preview belongs to. Call
+// it from a preview callback; both fields are zero before sampling starts.
+func GetPreviewInfo() SDPreviewInfo {
+	if sdGetPreviewInfo == nil {
+		return SDPreviewInfo{}
+	}
+	return previewInfoFromRegister(sdGetPreviewInfo())
+}
+
+// previewInfoFromRegister unpacks sd_preview_info_t from the integer return
+// register. sample_pass, the first field, occupies the low 32 bits on all the
+// little-endian targets the library is built for.
+func previewInfoFromRegister(reg uint64) SDPreviewInfo {
+	return SDPreviewInfo{SamplePass: int32(uint32(reg)), TotalSteps: int32(uint32(reg >> 32))}
+}
+
 // SupportsImageGeneration reports whether the loaded model can generate images.
 func (ctx *SDContext) SupportsImageGeneration() bool {
 	return sdCtxSupportsImageGeneration(ctx.ptr)
@@ -1025,10 +1031,12 @@ func (ctx *SDContext) SupportsVideoGeneration() bool {
 	return sdCtxSupportsVideoGeneration(ctx.ptr)
 }
 
-// FreeAudio releases a native audio buffer returned by generate_video. It is
-// safe to call with a nil audio or when the native binding is unavailable (the
-// library has not been loaded / the symbol was not registered), in which case
-// it does nothing — consistent with FreeImage/FreeImages.
+// FreeAudio releases a native audio buffer allocated by the library. Audio from
+// SDVideoGenerationResult.Audio belongs to that result and is released by its
+// Free method instead. It is safe to call with a nil audio or when the native
+// binding is unavailable (the library has not been loaded / the symbol was not
+// registered), in which case it does nothing — consistent with
+// FreeImage/FreeImages.
 func FreeAudio(audio *SDAudio) {
 	if audio != nil && freeSDAudio != nil {
 		freeSDAudio(audio)

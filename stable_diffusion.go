@@ -921,13 +921,17 @@ func (sDiffusion *StableDiffusion) GenerateImage(imgGenParams *ImgGenParams, new
 	// Generate image. The context is intentionally NOT freed here: the model is
 	// loaded once in NewStableDiffusion and reused across many GenerateImage
 	// calls. Teardown is the caller's responsibility via (*StableDiffusion).Free.
-	img, numImages := sDiffusion.ctx.GenerateImage(&sdImgGenParams)
-	if img == nil || numImages == 0 {
+	result := sDiffusion.ctx.GenerateImage(&sdImgGenParams)
+	if result == nil {
 		return errors.New("failed to generate image")
 	}
-	// generate_image yields a malloc'd array of numImages images, each with a
-	// malloc'd pixel buffer; free it once we're done with it to avoid a leak.
-	defer sd.FreeImages(img, numImages)
+	// The result owns the pixels, so it must outlive the save below.
+	defer result.Free()
+
+	img := result.Image(0)
+	if img == nil {
+		return errors.New("failed to generate image: result has no pixels")
+	}
 
 	fmt.Println("\nImage generated successfully!")
 	fmt.Printf("Image dimensions: %dx%d\n", img.Width, img.Height)
@@ -943,6 +947,9 @@ func (sDiffusion *StableDiffusion) GenerateImage(imgGenParams *ImgGenParams, new
 	return nil
 
 }
+
+// defaultVideoFps is used when a video result does not report a frame rate.
+const defaultVideoFps = 30
 
 // GenerateVideo generates video
 func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, newVideoPath string) error {
@@ -1135,7 +1142,7 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 	if vidGenParams.HighNoiseScheduler == "" || vidGenParams.HighNoiseScheduler == "default" {
 		defaultHighNoiseScheduler = sDiffusion.ctx.GetDefaultScheduler(defaultHighNoiseSampleMethod)
 	} else {
-		if scheduler, ok := SchedulerMap[vidGenParams.Scheduler]; ok {
+		if scheduler, ok := SchedulerMap[vidGenParams.HighNoiseScheduler]; ok {
 			defaultHighNoiseScheduler = scheduler
 		} else {
 			return fmt.Errorf("Invalid Scheduler: %s", vidGenParams.HighNoiseScheduler)
@@ -1225,20 +1232,23 @@ func (sDiffusion *StableDiffusion) GenerateVideo(vidGenParams *VidGenParams, new
 		sdVidGenParams.Cache.EndPercent = 0.95
 	}
 
-	// Generate video
-	frames, numFrames := sDiffusion.ctx.GenerateVideo(&sdVidGenParams)
-	if frames == nil || numFrames == 0 {
+	// Generate video. As in GenerateImage, the context stays loaded for reuse and
+	// is released by (*StableDiffusion).Free; the result owns the frames.
+	result := sDiffusion.ctx.GenerateVideo(&sdVidGenParams)
+	if result == nil {
 		return errors.New("failed to generate video")
 	}
-	defer func() {
-		sDiffusion.ctx.Free()
-	}()
+	defer result.Free()
 
 	// Save video frames
-	if err := sd.SaveFrames(frames, tmpDir); err != nil {
+	if err := sd.SaveFrames(result.Frames(), tmpDir); err != nil {
 		return errors.New("failed to save video")
 	}
-	if err := sd.EncodeVideo(tmpDir, newVideoPath, 30); err != nil {
+	fps := result.Fps()
+	if fps <= 0 {
+		fps = defaultVideoFps
+	}
+	if err := sd.EncodeVideo(tmpDir, newVideoPath, fps); err != nil {
 		return errors.New("failed to encode video")
 	}
 	if err := sd.CleanupTempDir(tmpDir); err != nil {
@@ -1299,16 +1309,20 @@ func (us *Upscaler) Upscale(inputImagePath string, upscaleFactor uint32, outputI
 
 	defer us.ctx.Free()
 
-	outputImages, numImages := us.ctx.Upscale(inputSDImage, upscaleFactor)
-	if outputImages == nil || numImages == 0 {
+	result := us.ctx.Upscale(inputSDImage, upscaleFactor)
+	if result == nil {
 		return errors.New("failed to upscale image")
 	}
-	defer sd.FreeImages(outputImages, numImages)
-	fmt.Printf("outputSDImage: %+v", *outputImages)
+	defer result.Free()
+
+	outputImage := result.Image(0)
+	if outputImage == nil {
+		return errors.New("failed to upscale image: result has no pixels")
+	}
+	fmt.Printf("outputSDImage: %+v", *outputImage)
 
 	// Save image
-	err := sd.SaveImage(outputImages, outputImagePath)
-	if err != nil {
+	if err := sd.SaveImage(outputImage, outputImagePath); err != nil {
 		return fmt.Errorf("failed to save image: %v", err)
 	}
 

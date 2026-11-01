@@ -222,6 +222,10 @@ func registerFunctions() {
 	purego.RegisterLibFunc(&sdHiresParamsInit, libSD, "sd_hires_params_init")
 	purego.RegisterLibFunc(&freeSDAudio, libSD, "free_sd_audio")
 	purego.RegisterLibFunc(&freeSDImages, libSD, "free_sd_images")
+	purego.RegisterLibFunc(&freeSDImageGenerationResult, libSD, "free_sd_image_generation_result")
+	purego.RegisterLibFunc(&freeSDVideoGenerationResult, libSD, "free_sd_video_generation_result")
+	purego.RegisterLibFunc(&sdGetModelVersionName, libSD, "sd_get_model_version_name")
+	purego.RegisterLibFunc(&sdGetPreviewInfo, libSD, "sd_get_preview_info")
 }
 
 // registerDevMemFunctions binds the optional sd_backend_dev_* device-memory

@@ -15,12 +15,15 @@ func FreeImage(img *SDImage) {
 	FreeImages(img, 1)
 }
 
-// FreeImages frees an array of count SDImages returned by the native library
-// (for example the result of generate_image, which mallocs an array of
-// images, each owning a malloc'd pixel buffer). It frees every image's pixel
-// buffer and then the backing array allocation. It is safe to call with a nil
-// pointer, a non-positive count, or when the free binding is unavailable (in
-// which case it does nothing).
+// FreeImages frees an array of count SDImages allocated by the native library:
+// a malloc'd array of images, each owning a malloc'd pixel buffer. It frees every
+// image's pixel buffer and then the backing array allocation. It is safe to call
+// with a nil pointer, a non-positive count, or when the free binding is
+// unavailable (in which case it does nothing).
+//
+// Never use it on images from SDImageGenerationResult or SDVideoGenerationResult.
+// Those belong to the result, are not laid out as an SDImage array, and are
+// released by the result's Free method.
 //
 // When the library exports free_sd_images (added upstream in the master-802
 // resync) that is used, so the memory is released by the same C runtime that
