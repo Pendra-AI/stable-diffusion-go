@@ -662,10 +662,11 @@ jobs:
           bash scripts/apply-upstream-patches.sh upstream
 
       - name: Build variant (${{ matrix.subdir }})
-        # Upstream's single-TU src/stable-diffusion.cpp grew past MSVC's COFF
-        # section limit at master-802-e92e86f (fatal error C1128), so every MSVC
-        # compile needs /bigobj. Set it via the CXXFLAGS/CFLAGS environment
-        # variables — CMake initializes CMAKE_<LANG>_FLAGS as
+        # Upstream's sources outgrew MSVC's COFF section limit at
+        # master-802-e92e86f (fatal error C1128). Upstream has since added
+        # /bigobj to its own library target, but not to ggml or the vendored
+        # targets, so keep it on every MSVC compile. Set it via the CXXFLAGS/
+        # CFLAGS environment variables — CMake initializes CMAKE_<LANG>_FLAGS as
         # "$ENV{<LANG>FLAGS} <platform defaults>", so /bigobj is APPENDED
         # alongside MSVC's defaults (/DWIN32 /D_WINDOWS /EHsc /GR). Passing
         # -DCMAKE_CXX_FLAGS=/bigobj instead would REPLACE those defaults and
